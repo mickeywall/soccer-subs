@@ -14,20 +14,20 @@
 :root{
   --bg:#edf1e9; --surface:#ffffff; --surface-2:#e3e9dd; --ink:#13200f; --ink-2:#4b5b45; --line:#cdd6c7;
   --pitch:#1d7a3b; --pitch-ink:#ffffff; --alert:#d9480f; --alert-bg:#fff0e6; --warn-bg:#fff6d6; --warn:#a86b00;
-  --bench:#2f6f9f; --focus:#0b57d0; --grass:#3b9a5a; --grass-2:#358f53; --chalk:rgba(255,255,255,.75); --hi:#e8590c; --lo:#2f6f9f;
+  --bench:#2f6f9f; --focus:#0b57d0; --grass:#3b9a5a; --grass-2:#358f53; --chalk:rgba(255,255,255,.75); --hi:#e8590c; --lo:#2f6f9f; --red:#d92d20; --green:#168a3f;
   --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#0d1510; --surface:#16211a; --surface-2:#223027; --ink:#e7efe4; --ink-2:#a3b4a0; --line:#2c3d31;
     --pitch:#3fb862; --pitch-ink:#07140b; --alert:#ff8a50; --alert-bg:#3a2012; --warn-bg:#35300f; --warn:#f2c14e;
-    --bench:#6fb1e0; --focus:#8ab4f8; --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --hi:#ff8a50; --lo:#6fb1e0; color-scheme:dark;
+    --bench:#6fb1e0; --focus:#8ab4f8; --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --hi:#ff8a50; --lo:#6fb1e0; --red:#ff6b5e; --green:#4cd07a; color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0d1510; --surface:#16211a; --surface-2:#223027; --ink:#e7efe4; --ink-2:#a3b4a0; --line:#2c3d31;
   --pitch:#3fb862; --pitch-ink:#07140b; --alert:#ff8a50; --alert-bg:#3a2012; --warn-bg:#35300f; --warn:#f2c14e;
-  --bench:#6fb1e0; --focus:#8ab4f8; --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --hi:#ff8a50; --lo:#6fb1e0; color-scheme:dark;
+  --bench:#6fb1e0; --focus:#8ab4f8; --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --hi:#ff8a50; --lo:#6fb1e0; --red:#ff6b5e; --green:#4cd07a; color-scheme:dark;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -135,6 +135,15 @@ input[type=text]{flex:1;min-width:0}
 .dev{display:flex;flex-wrap:wrap;gap:0 6px;justify-content:center;font-size:.74rem;line-height:1.25;font-variant-numeric:tabular-nums;color:var(--ink);max-width:100%}
 .pl .dev{justify-content:flex-start}
 .lscore{font-size:1.3rem;font-weight:800;font-variant-numeric:tabular-nums}
+.sw{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap}
+.aoff,.aon{font-weight:900;font-size:.95em}
+.aoff{color:var(--red)}
+.aon{color:var(--green)}
+.qn{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:baseline}
+.log li{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline}
+.log li>b:first-child{min-width:3.4ch;font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.disc .dq{color:var(--ink)}
 .grow{flex:1}
 .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .stack{display:flex;flex-direction:column;gap:6px}
@@ -153,7 +162,7 @@ input[type=text]{flex:1;min-width:0}
 .disc .dpos{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--ink-2)}
 .disc .dn{font-weight:800;font-size:.95rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .disc .dt{font-size:.78rem;font-variant-numeric:tabular-nums;color:var(--ink-2)}
-.disc .dq{font-size:.72rem;font-weight:800;color:var(--alert);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc .dq{font-size:.72rem;font-weight:800;color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .disc.gk{background:var(--warn-bg);border-color:var(--warn)}
 .disc.empty{background:rgba(255,255,255,.18);border-style:dashed;border-color:var(--chalk);color:#fff;box-shadow:none;justify-content:center}
 .disc.empty .dpos,.disc.empty .dn{color:#fff}
@@ -341,11 +350,33 @@ function pushHistory(g) {
   g.hist.push(JSON.stringify({ p: g.p, field: g.field, bench: g.bench, gk: g.gk, gkNext: g.gkNext, ht: g.ht, log: g.log }));
   if (g.hist.length > 10) g.hist.shift();
 }
+// A sub is always shown as a red down arrow by the kid coming off and a green up arrow by the kid going on.
+const swapHtml = (off, on) => `<span class="sw"><span class="aoff" title="coming off">▼</span> <b>${esc(nm(off))}</b></span> <span class="sw"><span class="aon" title="going on">▲</span> <b>${esc(nm(on))}</b></span>`;
+const swapText = (off, on) => '▼ ' + nm(off) + '   ▲ ' + nm(on);
+const nextSeq = g => (g.seq = (g.seq || 0) + 1);
 function logSwap(g, offs, ons, gm, label, gk) {
-  const half = g.period === 1 ? '1st' : '2nd';
-  const c = gm - g.prevMs;
-  g.log.unshift({ at: label || half + ' ' + fmtShort(c), text: (offs.length ? offs.map(nm).join(', ') + ' → ' + ons.map(nm).join(', ') : '') + (gk ? (offs.length ? ' · ' : '') + 'GK: ' + nm(gk) : '') });
-  g.log = g.log.slice(0, 12);
+  g.log.unshift({ n: nextSeq(g), half: g.period, c: gm - g.prevMs, ht: label === 'Half', pairs: offs.map((o, i) => [o, ons[i]]), gk: gk || '' });
+  g.log = g.log.slice(0, 60);
+}
+// One timeline for subs, goals and cards, newest first.
+function logRows(g) {
+  const rows = [], mins = (half, c) => evMinute({ half, c });
+  g.log.forEach((l, i) => {
+    if (!l.pairs) { rows.push({ key: [0, 0, -i], html: `<li><b>${esc(l.at)}</b> <span>${esc(l.text)}</span></li>` }); return; }   // saved by an older version
+    const sw = l.pairs.map(([o, n]) => swapHtml(o, n)).join(' ');
+    rows.push({ key: [l.half, l.c, l.n || 0], html: `<li><b>${l.ht ? 'HT' : mins(l.half, l.c)}</b> ${sw}${l.gk ? ` <span class="sw"><span class="tag gk">GK</span> <b>${esc(nm(l.gk))}</b></span>` : ''}</li>` });
+  });
+  let us = 0, them = 0;
+  g.events.map((e, i) => ({ e, n: e.n || i + 1 })).sort((a, b) => a.e.half - b.e.half || a.e.c - b.e.c || a.n - b.n).forEach(({ e, n }) => {
+    const m = mins(e.half, e.c), who = e.id ? esc(nm(e.id)) : 'Own goal or unknown';
+    let h;
+    if (e.type === 'goal') { us++; h = `⚽ <b>${who}</b> scored <span class="muted">${us}–${them}</span>`; }
+    else if (e.type === 'opp') { them++; h = `⚽ <b>Them</b> scored <span class="muted">${us}–${them}</span>`; }
+    else if (e.type === 'yellow') h = `🟨 <b>${who}</b> yellow card`;
+    else h = `🟥 <b>${who}</b> red card, sent off`;
+    rows.push({ key: [e.half, e.c, n], html: `<li><b>${m}</b> <span>${h}</span></li>` });
+  });
+  return rows.sort((a, b) => b.key[0] - a.key[0] || b.key[1] - a.key[1] || b.key[2] - a.key[2]).map(r => r.html);
 }
 /* Subs are queued first ("waiting at the half line") and only take effect when you tap On, i.e. when the ref waves them on. */
 function cleanQueue(g) {
@@ -386,7 +417,7 @@ function evMinute(ev) {
   return (m > H ? (off + H) + '+' + (m - H) : off + m) + '′';
 }
 function addEvent(g, type, id) {
-  g.events.push({ type, id: id || '', half: g.period, c: clockMs(g) });
+  g.events.push({ type, id: id || '', half: g.period, c: clockMs(g), n: nextSeq(g) });
   if (type === 'red' && id) g.p[id].out = true;           // sent off: never suggested to come back on
 }
 function removeEvent(g, ev) {
@@ -534,7 +565,7 @@ function onWindow(g, { k, stage }) {
   else signal('now', 'SUB TIME', queueText(g), act);
 }
 function queueText(g) {
-  const lines = g.queue.map(q => nm(q.off) + ' → ' + nm(q.on));
+  const lines = g.queue.map(q => swapText(q.off, q.on));
   if (g.gkNext) lines.push('GOALIE: ' + nm(g.gkNext));
   return lines.join('\n');
 }
@@ -640,7 +671,7 @@ async function testAlert() {
   const pat = [500, 200, 500, 200, 500];
   try { if (navigator.vibrate) navigator.vibrate(pat); } catch (e) {}
   beep('now');
-  const r = await notify('TEST: SUB TIME', 'Max → Eli\nSam → Noah\nThis is what your watch will show.', { vibrate: pat, tag: 'test', actions: [{ action: 'test', title: 'Got it' }] });
+  const r = await notify('TEST: SUB TIME', '▼ Max   ▲ Eli\n▼ Sam   ▲ Noah\nThis is what your watch will show.', { vibrate: pat, tag: 'test', actions: [{ action: 'test', title: 'Got it' }] });
   ui.alertMsg = r.msg; render();
 }
 function testLater(sec) {
@@ -796,7 +827,7 @@ function chip(g, id) {            // bench player
   const p = g.p[id], tags = [];
   if (g.gkNext === id) tags.push('<span class="tag gk">GK next</span>');
   if (g.ht && g.ht.off.includes(id)) tags.push('<span class="tag out">OFF</span>');
-  if (g.queue.some(q => q.on === id)) tags.push('<span class="tag in">At half line</span>');
+  if (g.queue.some(q => q.on === id)) tags.push('<span class="tag in">▲ At half line</span>');
   if (p.out) tags.push('<span class="tag x">OUT</span>');
   return `<button class="pl bench${p.out ? ' isout' : ''}" data-act="player" data-id="${id}" data-load="${id}"><span class="n">${esc(nm(id))} ${tags.join('')}</span><span class="t"><span data-played="${id}">${fmt(playedMs(id, g))}</span> played</span>${evBadges(g, id)}</button>`;
 }
@@ -807,15 +838,15 @@ function pitchView(g) {
     const [pos, x, y] = F[i] || ['', 50, 50], q = g.queue.find(z => z.off === id);
     const cls = ['disc', g.gk === id ? 'gk' : '', q ? 'qd' : ''].join(' ');
     return `<button class="${cls}" style="left:${x}%;top:${y}%" data-act="player" data-id="${id}" data-load="${id}">
-      <span class="dpos">${pos}${g.ht && g.ht.on.includes(id) ? ' · IN' : ''}</span><span class="dn">${esc(nm(id))}</span>
-      <span class="dt"><span data-played="${id}">${fmt(playedMs(id, g))}</span></span>${evBadges(g, id)}${q ? `<span class="dq">→ ${esc(nm(q.on))}</span>` : ''}</button>`;
+      <span class="dpos">${pos}${g.ht && g.ht.on.includes(id) ? ' · IN' : ''}${q ? ' <span class="aoff">▼</span>' : ''}</span><span class="dn">${esc(nm(id))}</span>
+      <span class="dt"><span data-played="${id}">${fmt(playedMs(id, g))}</span></span>${evBadges(g, id)}${q ? `<span class="dq"><span class="aon">▲</span> ${esc(nm(q.on))}</span>` : ''}</button>`;
   }).join('');
   return `<div class="pitch">${PITCH_LINES}${discs}</div>`;
 }
 function suggestInner(g) {
   const pairs = suggestPairs(g, 3);
   return `<h2>Who is due</h2>` + (pairs.length
-    ? pairs.map(([o, n]) => `<div class="qrow"><span class="qn"><b>${esc(nm(o))}</b> <small data-played="${o}"></small> → <b>${esc(nm(n))}</b> <small data-played="${n}"></small></span><button class="btn sm" data-act="sq" data-off="${o}" data-on="${n}">Queue</button></div>`).join('')
+    ? pairs.map(([o, n]) => `<div class="qrow"><span class="qn"><span class="sw"><span class="aoff">▼</span> <b>${esc(nm(o))}</b> <small data-played="${o}"></small></span> <span class="sw"><span class="aon">▲</span> <b>${esc(nm(n))}</b> <small data-played="${n}"></small></span></span><button class="btn sm" data-act="sq" data-off="${o}" data-on="${n}">Queue</button></div>`).join('')
       + (pairs.length > 1 ? `<button class="btn sm" data-act="sqall">Queue all ${pairs.length}</button>` : '')
       + `<p class="hint">Most played on the field paired with least played on the bench. You decide: tap any player to pick someone else.</p>`
     : `<p class="empty">Playing time is within a minute across the team right now.</p>`);
@@ -823,9 +854,9 @@ function suggestInner(g) {
 function dockView(g) {
   cleanQueue(g);
   if (!g.queue.length && !g.gkNext) return '';
-  const rows = g.queue.map((q, i) => `<div class="qrow"><span class="qn"><b>${esc(nm(q.off))}</b> → <b>${esc(nm(q.on))}</b></span><button class="btn sm primary" data-act="on" data-i="${i}">On ✓</button><button class="x" data-act="unq" data-i="${i}" aria-label="Cancel this sub">✕</button></div>`).join('');
+  const rows = g.queue.map((q, i) => `<div class="qrow"><span class="qn">${swapHtml(q.off, q.on)}</span><button class="btn sm primary" data-act="on" data-i="${i}">On ✓</button><button class="x" data-act="unq" data-i="${i}" aria-label="Cancel this sub">✕</button></div>`).join('');
   const gkRow = !g.gkNext ? '' : g.field.includes(g.gkNext)
-    ? `<div class="qrow"><span class="qn"><span class="tag gk">GK</span> ${g.gk ? esc(nm(g.gk)) + ' → ' : ''}<b>${esc(nm(g.gkNext))}</b> takes the gloves</span><button class="btn sm primary" data-act="gkgo">Done ✓</button><span></span></div>`
+    ? `<div class="qrow"><span class="qn"><span class="tag gk">GK</span> <b>${esc(nm(g.gkNext))}</b> takes the gloves${g.gk ? ' from ' + esc(nm(g.gk)) : ''}</span><button class="btn sm primary" data-act="gkgo">Done ✓</button><span></span></div>`
     : `<div class="qrow"><span class="qn"><span class="tag gk">GK</span> <b>${esc(nm(g.gkNext))}</b> takes over in goal once on the field</span></div>`;
   const head = g.alert === 'now' ? 'Sub time' : g.alert === 'soon' ? 'Get ready' : 'Waiting at the half line';
   return `<div class="dock ${g.alert}" aria-live="assertive"><div class="dhead"><b>${head}</b><span>Tap On when the ref waves them on</span></div>${rows}${gkRow}
@@ -872,7 +903,7 @@ function gameView() {
   <p class="hint">Dot on a player: orange has played more than the team average, blue has played less. Tap a player to sub them.</p>
   <section class="card"><h2>Bench · ${g.bench.length}</h2>${bench.length ? `<div class="grid">${bench.map(id => chip(g, id)).join('')}</div>` : '<p class="empty">Everyone is playing.</p>'}</section>
   ${g.status === 'running' || g.status === 'paused' ? `<section class="card" id="sugg">${suggestInner(g)}</section>` : ''}
-  <section class="card"><h2>Subs so far</h2>${g.log.length ? `<ul class="log">${g.log.map(l => `<li><b>${l.at}</b> ${esc(l.text)}</li>`).join('')}</ul>` : '<p class="empty">None yet.</p>'}
+  <section class="card"><h2>Game log</h2>${(() => { const r = logRows(g); return r.length ? `<ul class="log">${r.join('')}</ul>` : '<p class="empty">Subs, goals and cards will show here.</p>'; })()}
     <div class="row"><button class="btn sm" data-act="undo" ${g.hist.length ? '' : 'disabled'}>Undo last change</button>
     ${g.status === 'ready' && g.period === 1 ? '<button class="btn ghost sm" data-act="back">Back to setup</button>' : ''}</div></section>
   ${dockView(g)}`;
@@ -892,6 +923,7 @@ function summaryView(g) {
     ${scorers || cards ? `<ul class="log">${scorers}${cards}</ul>` : '<p class="empty">No goals or cards recorded.</p>'}
   </section>
   ${(S.results || []).length > 1 ? `<section class="card"><h2>Results so far</h2><ul class="log">${S.results.map((r, i) => `<li><b>Game ${i + 1}</b> ${r.us}–${r.them} ${r.us > r.them ? 'Win' : r.us < r.them ? 'Loss' : 'Draw'}</li>`).join('')}</ul></section>` : ''}
+  <section class="card"><h2>Game log</h2>${(() => { const r = logRows(g); return r.length ? `<ul class="log">${r.join('')}</ul>` : '<p class="empty">Nothing was recorded.</p>'; })()}</section>
   <section class="card"><h2>Minutes this game</h2>
     <div class="sum">${ids.map(id => `<span class="nm">${esc(nm(id))}</span><span class="v">${fmt(g.p[id].played)}</span><div class="bar"><i style="width:${g.p[id].played / max * 100}%"></i></div>`).join('')}</div>
     <p class="hint">Most to least played: ${fmt(spread)} apart. Tournament totals are saved.</p>
@@ -949,7 +981,7 @@ function playerSheet(id) {
   if (onF) {
     const q = g.queue.find(x => x.off === id), free = rankLists(g).ons.length > 0;
     if (q) {
-      items.push({ head: nm(id) + ' → ' + nm(q.on) + ' is waiting for the ref' });
+      items.push({ head: nm(id) + ' comes off and ' + nm(q.on) + ' goes on. Waiting for the ref' });
       items.push({ label: 'Change who goes on', fn: () => benchPicker(id) });
       items.push({ label: 'Cancel this sub', fn: () => { g.queue = g.queue.filter(x => x !== q); cleanQueue(g); } });
     } else items.push({ label: 'Sub off…', sub: g.status === 'ready' ? 'happens now' : 'goes to the half line', disabled: !free, fn: () => benchPicker(id) });
