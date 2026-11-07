@@ -24,6 +24,8 @@ To update: change the files on `main`. The installed app picks up the new versio
 8. At 22:00 it alerts you. Tap **End 1st half**. The second-half lineup is already set (and positions carry over); adjust if you like and tap **Start 2nd half**.
 9. After the game you get minutes per player. **Set up next game** keeps tournament totals.
 
+**Score and cards.** The score bar under the clock has **We scored** (pick who scored) and **Them +1**, and **Undo last goal** fixes a mistake. You can also tap a player and choose **Scored a goal**, **Yellow card** or **Red card**. A goal shows a ball and the minute next to the name, for example ⚽ 12′ (a 2nd-half goal at 3:10 reads 26′, and stoppage time reads 22+1′). Yellow cards show 🟨 and red cards 🟥. A red card also marks the kid unavailable, so they are never suggested to come back on. The full-time screen lists the final score, scorers and cards, and the results of each game are kept for the tournament. To remove a goal or card, tap the player and choose Remove.
+
 Tap any player for more: switch positions, make them goalie, or mark them hurt (they leave when their replacement goes on and are left out of suggestions). **Undo last change** reverses the last sub. **Lock** makes the screen ignore touches (press and hold to unlock) so it can live in a pocket.
 
 ## How subs are chosen
