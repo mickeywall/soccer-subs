@@ -51,6 +51,7 @@ h1{font-size:1.2rem;margin:0;letter-spacing:-.01em}
 .btn.big{min-height:60px;font-size:1.15rem}
 .btn.ghost{background:transparent}
 .btn.danger{background:transparent;color:var(--alert);border-color:var(--alert)}
+.btn.stop{background:var(--red);color:var(--pitch-ink);border-color:transparent}
 .btn.sm{min-height:40px;padding:6px 12px;font-size:.9rem}
 .btn:disabled{opacity:.45;cursor:default}
 .btn:focus-visible,.pl:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
@@ -959,6 +960,7 @@ function gameView() {
     <div class="row"><button class="btn sm" data-act="undo" ${g.hist.length ? '' : 'disabled'}>Undo last change</button>
     ${typeof Share !== 'undefined' ? `<button class="btn ghost sm" data-act="sharesheet">${shareOn() ? '● Sharing live' : 'Share live'}</button>` : ''}
     ${g.status === 'ready' && g.period === 1 ? '<button class="btn ghost sm" data-act="back">Back to setup</button>' : ''}</div></section>
+  <button class="btn stop big" data-act="endgame">End game</button>
   ${dockView(g)}`;
 }
 function summaryView(g) {
@@ -989,7 +991,7 @@ function sheetView() {
   if (!ui.sheet) return '';
   return `<div class="scrim" data-act="sheetclose"><div class="sheet" role="dialog" aria-label="${esc(ui.sheet.title)}" data-stop="1"><h3>${esc(ui.sheet.title)}</h3>
     ${ui.sheet.items.map((it, i) => it.head ? `<div class="shead">${esc(it.head)}</div>` : `<button class="btn" data-act="sheet" data-i="${i}" ${it.disabled ? 'disabled' : ''}><span>${esc(it.label)}${it.tag ? ` <span class="tag sug">${esc(it.tag)}</span>` : ''}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</button>`).join('')}
-    <button class="btn ghost" data-act="sheetclose">Cancel</button></div></div>`;
+    <button class="btn ghost" data-act="sheetclose">${esc(ui.sheet.dismiss || 'Cancel')}</button></div></div>`;
 }
 function lockView() {
   const g = S.game; cleanQueue(g);
@@ -1004,7 +1006,7 @@ function render() {
 }
 
 /* ============ sheets ============ */
-const openSheet = (title, items) => { ui.sheet = { title, items }; };
+const openSheet = (title, items, dismiss) => { ui.sheet = { title, items, dismiss }; };
 const commitSub = (g, off, on) => { if (g.status === 'ready') directSwap(off, on); else queueAdd(g, off, on, false); };
 // Pick who comes on for a field player. Least played first; the first one is flagged as the suggestion.
 function benchPicker(off, after) {
@@ -1023,6 +1025,22 @@ function fieldPicker(on) {
     const po = playedMs(o, g), d = po - pb, sug = first && o !== g.gk && d > 0; if (sug) first = false;
     return { label: nm(o), tag: sug ? 'Suggested' : (o === g.gk ? 'GK' : ''), sub: posOf(g, o) + ' · ' + fmt(po) + (d > 0 ? ' · ' + fmtShort(d) + ' more' : ''), fn: () => commitSub(g, o, on) };
   })]);
+}
+// End game from any point. Either finish it and keep the minutes, goals and cards, or throw the whole game away.
+function endGameSheet() {
+  const g = S.game, started = !(g.period === 1 && g.status === 'ready' && g.prevMs === 0 && g.baseMs === 0);
+  const items = [{ head: started ? 'Choose what happens to this game. This can not be undone.' : 'The game has not started yet.' }];
+  if (started) items.push({ label: 'End now and keep the stats', sub: 'full-time screen, counts toward tournament totals', fn: () => endGameNow(true) });
+  items.push({ label: started ? 'Cancel the game and discard it' : 'Cancel the game', sub: 'nothing is saved, back to setup', fn: () => endGameNow(false) });
+  openSheet('End this game?', items, 'No, keep playing');
+}
+function endGameNow(keep) {
+  const g = S.game; if (!g) return;
+  ui.locked = false; closeNotif('subs'); closeNotif('game'); closeNotif('half');
+  if (!keep) { S.game = null; releaseWake(); return; }
+  stopClock(g); g.status = 'paused'; g.prevMs += g.baseMs; g.baseMs = 0; g.startedAt = null;
+  g.queue = []; g.gkNext = ''; g.alert = ''; g.hist = [];
+  finishGame(g);
 }
 function confirmRed(id) {
   const g = S.game, onF = g.field.includes(id);
@@ -1125,6 +1143,7 @@ function act(a, d) {
     case 'sharesheet': shareSheet(); break;
     case 'inaccept': inboxAccept(+d.i); break;
     case 'inreject': g.inbox.splice(+d.i, 1); break;
+    case 'endgame': endGameSheet(); break;
     case 'player': playerSheet(d.id); break;
     case 'hole': holeSheet(+d.i); break;
     case 'ourgoal': scorerSheet(); break;
