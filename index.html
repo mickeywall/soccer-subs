@@ -200,7 +200,7 @@ function load() {
 }
 let S = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
-const ui = { addText: '', sheet: null, locked: false, confirm: null };
+const ui = { addText: '', sheet: null, locked: false, confirm: null, alertMsg: '' };
 
 const R = id => S.roster.find(p => p.id === id);
 const nm = id => (R(id) || {}).name || '?';
@@ -208,9 +208,9 @@ const ridx = id => S.roster.findIndex(p => p.id === id);
 
 // Formations as [label, x%, y%] per slot. Slot 0 is always the goalkeeper. Attack is at the top of the pitch.
 const FORMATIONS = {
-  '2-3-1': [['GK', 50, 89], ['LD', 29, 67], ['RD', 71, 67], ['LM', 16, 41], ['CM', 50, 45], ['RM', 84, 41], ['ST', 50, 15]],
-  '3-2-1': [['GK', 50, 89], ['LD', 16, 67], ['CD', 50, 71], ['RD', 84, 67], ['LM', 29, 42], ['RM', 71, 42], ['ST', 50, 15]],
-  '2-2-2': [['GK', 50, 89], ['LD', 29, 67], ['RD', 71, 67], ['LM', 29, 42], ['RM', 71, 42], ['LS', 29, 15], ['RS', 71, 15]],
+  '2-3-1': [['GK', 50, 89], ['LB', 29, 67], ['RB', 71, 67], ['LM', 16, 41], ['CM', 50, 45], ['RM', 84, 41], ['ST', 50, 15]],
+  '3-2-1': [['GK', 50, 89], ['LB', 16, 67], ['CD', 50, 71], ['RB', 84, 67], ['LM', 29, 42], ['RM', 71, 42], ['ST', 50, 15]],
+  '2-2-2': [['GK', 50, 89], ['LB', 29, 67], ['RB', 71, 67], ['LM', 29, 42], ['RM', 71, 42], ['LS', 29, 15], ['RS', 71, 15]],
   '1-3-2': [['GK', 50, 89], ['CD', 50, 69], ['LM', 16, 43], ['CM', 50, 47], ['RM', 84, 43], ['LS', 29, 15], ['RS', 71, 15]],
 };
 
@@ -564,13 +564,27 @@ function signal(kind, title, body, opt) {
   notify(title, body, Object.assign({ vibrate: pat }, opt));
 }
 const notifOK = () => 'Notification' in window && Notification.permission === 'granted';
+const BLOCKED_HELP = 'Notifications are blocked. In Chrome tap the ⓘ or lock icon next to the address, then Permissions, then Notifications, then Allow. For the installed app also check Android Settings → Apps → Sideline Subs → Notifications.';
+// Returns {ok, msg}: msg says what happened so a silent failure is visible on the Alerts card.
 async function notify(title, body, opt = {}) {
-  if (!notifOK()) return;
+  if (!('Notification' in window)) return { ok: false, msg: 'This browser cannot show notifications. Vibration and sound still work.' };
+  if (Notification.permission === 'denied') return { ok: false, msg: BLOCKED_HELP };
+  if (Notification.permission !== 'granted') return { ok: false, msg: 'Notifications are not allowed yet. Tap “Enable notifications” and choose Allow.' };
   try {
-    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (!navigator.serviceWorker) return { ok: false, msg: 'This page cannot run its background service (needs the https address). Open the installed app or the github.io address.' };
+    let reg = await navigator.serviceWorker.getRegistration();
+    if (!reg || !reg.active) reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 3000))]);
+    if (!reg) return { ok: false, msg: 'The app’s background service is not running yet. Close the app, open it again with signal, and retry.' };
     const o = { body, tag: opt.tag || 'subs', renotify: true, requireInteraction: true, vibrate: opt.vibrate || [300, 150, 300], icon: 'icon-192.png', badge: 'icon-192.png', actions: opt.actions || [] };
-    if (reg && reg.active) await reg.showNotification(title, o); else new Notification(title, { body, tag: o.tag });
-  } catch (e) {}
+    await reg.showNotification(title, o);
+    const n = (await reg.getNotifications({ tag: o.tag })).length;
+    const at = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    return n
+      ? { ok: true, msg: 'Sent to Android at ' + at + '. Pull down the notification shade on your phone to see it. If it is there but your watch stayed quiet, the watch is not receiving it from the phone.' }
+      : { ok: false, msg: 'Chrome sent it at ' + at + ' but Android did not keep it. Check Android Settings → Apps → Sideline Subs (or Chrome) → Notifications, and make sure they are on and not silenced.' };
+  } catch (e) {
+    return { ok: false, msg: 'Android refused the notification: ' + ((e && e.message) || e) };
+  }
 }
 async function closeNotif(tag) {
   try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) (await reg.getNotifications({ tag })).forEach(n => n.close()); } catch (e) {}
@@ -578,10 +592,21 @@ async function closeNotif(tag) {
 async function enableAlerts() {
   audio();
   try { if ('Notification' in window) await Notification.requestPermission(); } catch (e) {}
+  ui.alertMsg = Notification.permission === 'granted' ? 'Notifications allowed. Tap Test alert to try one.' : Notification.permission === 'denied' ? BLOCKED_HELP : 'You did not choose Allow. Tap Enable notifications to try again.';
   render();
 }
-function testAlert() {
-  signal('now', 'TEST: SUB NOW', 'OUT: Sam, Max\nIN: Eli, Noah\nThis is what your watch will show.', { tag: 'test', actions: [{ action: 'test', title: 'Got it' }] });
+async function testAlert() {
+  const pat = [500, 200, 500, 200, 500];
+  try { if (navigator.vibrate) navigator.vibrate(pat); } catch (e) {}
+  beep('now');
+  const r = await notify('TEST: SUB TIME', 'Max → Eli\nSam → Noah\nThis is what your watch will show.', { vibrate: pat, tag: 'test', actions: [{ action: 'test', title: 'Got it' }] });
+  ui.alertMsg = r.msg; render();
+}
+function testLater(sec) {
+  audio();
+  ui.alertMsg = 'Test coming in ' + sec + ' seconds. Press the power button to lock your phone now, then watch your wrist.';
+  render();
+  setTimeout(testAlert, sec * 1000);
 }
 /* Actions tapped on a notification (including on the watch) arrive from the service worker with the tap time. */
 function handleAction(action, t) {
@@ -717,8 +742,10 @@ function setupView() {
   </section>
 
   <section class="card"><h2>Alerts</h2>
-    <p class="hint">${perm === 'granted' ? 'Notifications are on. They show on your Pixel Watch while the app is open.' : perm === 'denied' ? 'Notifications are blocked. Allow them in Chrome site settings.' : perm === 'unsupported' ? 'Notifications are not available here. Vibration and sound still work.' : 'Turn on notifications so sub alerts reach your watch.'}</p>
-    <div class="row">${perm === 'default' ? '<button class="btn primary" data-act="alerts">Enable notifications</button>' : ''}<button class="btn" data-act="test">Test alert</button><button class="btn ghost" data-act="sound">Sound: ${S.sound ? 'on' : 'off'}</button></div>
+    <p class="hint">${perm === 'granted' ? 'Notifications are allowed. Your phone also vibrates and beeps for every alert.' : perm === 'denied' ? 'Notifications are blocked. ' + BLOCKED_HELP : perm === 'unsupported' ? 'Notifications are not available here. Vibration and sound still work.' : 'Notifications are not allowed yet. Phone vibration and sound work without them, but the watch needs notifications.'}</p>
+    <div class="row">${perm === 'default' ? '<button class="btn primary" data-act="alerts">Enable notifications</button>' : ''}<button class="btn" data-act="test">Test alert</button><button class="btn" data-act="testlater">Test in 15 s</button><button class="btn ghost" data-act="sound">Sound: ${S.sound ? 'on' : 'off'}</button></div>
+    ${ui.alertMsg ? `<p class="hint" role="status"><b>${esc(ui.alertMsg)}</b></p>` : ''}
+    <p class="hint">Watches often stay quiet while the phone screen is on. “Test in 15 s” lets you lock the phone first so you can see whether the watch buzzes.</p>
   </section>
 
   ${S.roster.some(r => r.tot) ? `<button class="btn danger sm" data-act="resettot">${ui.confirm === 'resettot' ? 'Tap again to clear totals' : 'Reset tournament totals'}</button>` : ''}`;
@@ -901,6 +928,7 @@ function act(a, d) {
     case 'start': startGame(); return;
     case 'alerts': enableAlerts(); return;
     case 'test': audio(); testAlert(); return;
+    case 'testlater': testLater(15); return;
     case 'sound': S.sound = !S.sound; audio(); break;
     case 'resettot':
       if (ui.confirm === 'resettot') { S.roster.forEach(r => { r.tot = 0; }); S.games = 0; ui.confirm = null; S.setup.edited = false; }
