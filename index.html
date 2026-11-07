@@ -145,6 +145,8 @@ input[type=text]{flex:1;min-width:0}
 .disc .dt{font-size:.78rem;font-variant-numeric:tabular-nums;color:var(--ink-2)}
 .disc .dq{font-size:.72rem;font-weight:800;color:var(--alert);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .disc.gk{background:var(--warn-bg);border-color:var(--warn)}
+.disc.empty{background:rgba(255,255,255,.18);border-style:dashed;border-color:var(--chalk);color:#fff;box-shadow:none;justify-content:center}
+.disc.empty .dpos,.disc.empty .dn{color:#fff}
 .disc.qd{border-style:dashed;border-color:var(--alert)}
 .disc:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 /* clock bar and queue dock stay on screen while you scroll */
@@ -181,7 +183,7 @@ const fmtShort = ms => fmt(ms).replace(/^0/, '');
 const DEFAULT = () => ({
   roster: [],                                   // {id, name, here, tot}  tot = tournament ms played
   cfg: { halfMin: 22, onField: 7, subsPerHalf: 3, swaps: 0, warnSec: 30, formation: '2-3-1' },   // swaps 0 = auto
-  setup: { starters: [], gks: [], edited: false },   // gks = goalie pool in rotation order
+  setup: { lineup: [], starters: [], gks: [], edited: false },   // lineup = starters by pitch slot (slot 0 = GK); gks = goalie pool
   sound: true,
   game: null,
 });
@@ -278,6 +280,14 @@ function runWindow(g, w) {
   return s;
 }
 // How many kids swap per window. "Auto" (swaps = 0) simulates the whole game and keeps the count with the smallest gap.
+// The kid placed in the GK spot starts in goal; the rest of the goalie pool follows in the order they were picked.
+function effPool(lineup = S.setup.lineup, gks = S.setup.gks) {
+  if (!gks.length) return [];
+  const gk = lineup[0];
+  if (!gk) return [...gks];
+  const i = gks.indexOf(gk);
+  return i < 0 ? [gk, ...gks] : [...gks.slice(i), ...gks.slice(0, i)];
+}
 function planGap(k, subs, starters, ids, pool) {
   const H = halfMs(), seg = H / (subs + 1), gp = pool.filter(id => ids.includes(id));
   const g = { period: 1, status: 'paused', baseMs: 0, prevMs: 0, k, subs, p: {}, field: [...starters],
@@ -295,7 +305,7 @@ function bestSwaps(subs) {
   if (bench <= 0 || st.length !== S.cfg.onField) return { k: Math.max(1, Math.min(3, bench)), gap: 0 };
   let best = null;
   for (let k = 1; k <= bench; k++) {
-    const gap = planGap(k, subs, st, ids, S.setup.gks), key = [Math.round(gap / 5000), Math.abs(k - 3), k];
+    const gap = planGap(k, subs, st, ids, effPool()), key = [Math.round(gap / 5000), Math.abs(k - 3), k];
     if (!best || key[0] < best.key[0] || (key[0] === best.key[0] && (key[1] < best.key[1] || (key[1] === best.key[1] && key[2] < best.key[2])))) best = { k, gap, key };
   }
   return best;
@@ -304,7 +314,7 @@ function plan() {
   const ids = S.roster.filter(r => r.here).map(r => r.id), st = S.setup.starters.filter(id => ids.includes(id));
   const bench = Math.max(0, ids.length - S.cfg.onField);
   if (!bench || st.length !== S.cfg.onField) return { k: 0, gap: 0 };
-  if (S.cfg.swaps) { const k = Math.min(S.cfg.swaps, bench); return { k, gap: planGap(k, S.cfg.subsPerHalf, st, ids, S.setup.gks) }; }
+  if (S.cfg.swaps) { const k = Math.min(S.cfg.swaps, bench); return { k, gap: planGap(k, S.cfg.subsPerHalf, st, ids, effPool()) }; }
   return bestSwaps(S.cfg.subsPerHalf);
 }
 function applySwap(g, offId, onId, gm) {
@@ -379,11 +389,12 @@ function suggestPairs(g, n) {
 /* ============ game flow ============ */
 function startGame() {
   const present = S.roster.filter(r => r.here).map(r => r.id);
-  const starters = S.setup.starters.filter(id => present.includes(id));
-  if (starters.length !== S.cfg.onField) return;
-  const pool = S.setup.gks.filter(id => present.includes(id));
-  const gk1 = starters.includes(pool[0]) ? pool[0] : '';
-  const field = gk1 ? [gk1, ...starters.filter(id => id !== gk1)] : [...starters];
+  fixStarters();
+  const lineup = S.setup.lineup;
+  if (lineup.length !== S.cfg.onField || lineup.some(id => !id || !present.includes(id))) return;
+  const starters = [...lineup], pool = effPool().filter(id => present.includes(id));
+  const gk1 = pool.length ? lineup[0] : '';          // goalie is only tracked (and protected) when you picked goalies
+  const field = [...lineup];
   const g = {
     period: 1, status: 'ready', baseMs: 0, startedAt: null, prevMs: 0, evIdx: 0, halfAlerted: false,
     p: {}, field, bench: present.filter(id => !starters.includes(id)),
@@ -589,10 +600,13 @@ function releaseWake() { try { if (wl) wl.release(); } catch (e) {} wl = null; }
 
 /* ============ setup ============ */
 function fixStarters() {
-  const pres = S.roster.filter(r => r.here), ids = pres.map(r => r.id), s = S.setup;
+  const ids = S.roster.filter(r => r.here).map(r => r.id), s = S.setup, n = S.cfg.onField;
   s.gks = (s.gks || []).filter(id => ids.includes(id));
-  s.starters = s.starters.filter(id => ids.includes(id));
+  if (!Array.isArray(s.lineup) || (!s.lineup.length && s.starters && s.starters.length)) s.lineup = [...(s.starters || [])];
+  const seen = new Set();
+  s.lineup = Array.from({ length: n }, (_, i) => { const id = s.lineup[i]; if (id && ids.includes(id) && !seen.has(id)) { seen.add(id); return id; } return ''; });
   if (!s.edited) autoStarters();
+  s.starters = s.lineup.filter(Boolean);
 }
 function autoStarters() {
   const pres = S.roster.filter(r => r.here), s = S.setup, n = S.cfg.onField;
@@ -600,7 +614,32 @@ function autoStarters() {
   let ids = [...pres].sort((a, b) => late(a) - late(b) || a.tot - b.tot || ridx(a.id) - ridx(b.id)).slice(0, n).map(r => r.id);
   const g1 = s.gks[0];
   if (g1 && !ids.includes(g1)) ids = [...ids.slice(0, Math.max(0, n - 1)), g1];   // first goalie always starts
-  s.starters = ids;
+  const gk = g1 && ids.includes(g1) ? g1 : ids[0];
+  const order = gk ? [gk, ...ids.filter(id => id !== gk)] : ids;
+  s.lineup = Array.from({ length: n }, (_, i) => order[i] || '');
+}
+function placeStarter(i, id) {            // put a kid in a spot; whoever was there goes back to "not starting"
+  const s = S.setup, j = s.lineup.indexOf(id);
+  if (j >= 0) s.lineup[j] = '';
+  s.lineup[i] = id; s.edited = true;
+}
+function slotSheet(i) {
+  const s = S.setup, F = FORMATIONS[S.cfg.formation] || FORMATIONS['2-3-1'], cur = s.lineup[i];
+  const free = S.roster.filter(r => r.here && !s.lineup.includes(r.id)).sort((a, b) => a.tot - b.tot || ridx(a.id) - ridx(b.id));
+  const items = [{ head: 'Not starting' }];
+  if (free.length) free.forEach(r => items.push({ label: r.name, sub: r.tot ? fmtShort(r.tot) + ' played' : '', fn: () => placeStarter(i, r.id) }));
+  else items.push({ head: 'Everyone here is already in the lineup' });
+  const others = s.lineup.map((id, j) => [id, j]).filter(([id, j]) => id && j !== i);
+  if (others.length) {
+    items.push({ head: 'Switch with a starter' });
+    others.forEach(([id, j]) => items.push({ label: nm(id), sub: F[j][0], fn: () => { s.lineup[j] = cur; s.lineup[i] = id; s.edited = true; } }));
+  }
+  if (cur) items.push({ head: 'Or' }, { label: 'Take ' + nm(cur) + ' out of this spot', fn: () => { s.lineup[i] = ''; s.edited = true; } });
+  openSheet(F[i][0] + (cur ? ' · ' + nm(cur) : ' · empty'), items);
+}
+function benchSheet(id) {                 // a kid who is not starting: pick the spot for them
+  const s = S.setup, F = FORMATIONS[S.cfg.formation] || FORMATIONS['2-3-1'];
+  openSheet('Where does ' + nm(id) + ' start?', [{ head: 'Pick a position' }, ...s.lineup.map((o, i) => ({ label: F[i][0], sub: o ? 'replaces ' + nm(o) : 'empty', fn: () => placeStarter(i, id) }))]);
 }
 function addPlayers(text) {
   text.split(/[\n,;]+/).map(t => t.trim()).filter(Boolean).forEach(name => S.roster.push({ id: uid(), name, here: true, tot: 0 }));
@@ -611,6 +650,14 @@ const SAMPLE = ['Liam', 'Noah', 'Mason', 'Ethan', 'Lucas', 'Jack', 'Owen', 'Eli'
 function stepper(key, label, val, d, suffix) {
   return `<div class="field-row"><label>${label}</label><div class="stepper"><button class="btn" data-act="cfg" data-k="${key}" data-d="${-d}" aria-label="Less">−</button><b>${val}${suffix || ''}</b><button class="btn" data-act="cfg" data-k="${key}" data-d="${d}" aria-label="More">+</button></div></div>`;
 }
+function setupPitch(formation) {
+  const F = FORMATIONS[formation] || FORMATIONS['2-3-1'], L = S.setup.lineup;
+  return `<div class="pitch">${PITCH_LINES}${F.map(([pos, x, y], i) => {
+    const id = L[i];
+    return `<button class="disc${id ? '' : ' empty'}${i === 0 && id && effPool().length ? ' gk' : ''}" style="left:${x}%;top:${y}%" data-act="slot" data-i="${i}" aria-label="${pos}: ${id ? esc(nm(id)) : 'empty'}">
+      <span class="dpos">${pos}</span><span class="dn">${id ? esc(nm(id)) : '+ Add'}</span>${id && R(id).tot ? `<span class="dt">${fmtShort(R(id).tot)} so far</span>` : ''}</button>`;
+  }).join('')}</div>`;
+}
 function setupView() {
   fixStarters();
   const c = S.cfg, pres = S.roster.filter(r => r.here), n = pres.length, on = c.onField, bench = Math.max(0, n - on);
@@ -619,7 +666,7 @@ function setupView() {
   if (bench && swaps && st0.length === on) {
     for (let sb = 2; sb <= 6; sb++) {
       if (sb === c.subsPerHalf) continue;
-      const gap = c.swaps ? planGap(Math.min(c.swaps, bench), sb, st0, pres.map(r => r.id), S.setup.gks) : bestSwaps(sb).gap;
+      const gap = c.swaps ? planGap(Math.min(c.swaps, bench), sb, st0, pres.map(r => r.id), effPool()) : bestSwaps(sb).gap;
       if (gap < pl.gap - 30000 && (!tip || gap < tip.gap - 1000)) tip = { sb, gap };
     }
   }
@@ -629,8 +676,9 @@ function setupView() {
   const st = S.setup.starters, ok = n >= on && st.length === on;
   let msg = '';
   if (n < on) msg = `You need at least ${on} players marked here.`;
-  else if (st.length !== on) msg = `Pick ${on} starters (${st.length} picked).`;
-  const pool = S.setup.gks, at = gkWindows(pool.length, c.subsPerHalf);
+  else if (st.length !== on) msg = `Fill every spot on the pitch (${st.length} of ${on}).`;
+  const pool = effPool(), at = gkWindows(pool.length, c.subsPerHalf);
+  const notStarting = pres.filter(r => !S.setup.lineup.includes(r.id));
   const wlabel = w => w <= c.subsPerHalf ? fmtShort(w * seg) + ' of the 1st half' : w === c.subsPerHalf + 1 ? 'halftime' : fmtShort((w - c.subsPerHalf - 1) * seg) + ' of the 2nd half';
   const gkText = !pool.length ? 'No goalie picked, so the app will not track who is in goal.'
     : pool.length === 1 ? nm(pool[0]) + ' stays in goal all game.'
@@ -657,12 +705,13 @@ function setupView() {
   </section>
 
   <section class="card"><h2>Starting lineup</h2>
-    <p class="hint"><b>Goalies</b>: tap each kid who will play in goal, in the order they go. They take turns.</p>
-    <div class="grid">${pres.map(r => { const i = S.setup.gks.indexOf(r.id); return `<button class="pl ${i >= 0 ? 'field' : 'bench'}" data-act="gk" data-id="${r.id}"><span class="n">${esc(r.name)}${i >= 0 ? ' <span class="tag gk">GK</span>' : ''}</span><span class="t">${i >= 0 ? (i === 0 ? 'Starts in goal' : 'Goalie #' + (i + 1)) : 'Not a goalie'}</span></button>`; }).join('')}</div>
+    <p class="hint">Tap a spot to choose who starts there. The kid in GK starts in goal.</p>
+    ${setupPitch(c.formation)}
+    ${notStarting.length ? `<p class="hint"><b>Not starting</b>: tap a kid to give them a spot.</p><div class="grid">${notStarting.map(r => `<button class="pl bench" data-act="bsel" data-id="${r.id}"><span class="n">${esc(r.name)}</span><span class="t">${r.tot ? fmtShort(r.tot) + ' played so far' : 'Bench'}</span></button>`).join('')}</div>` : ''}
+    <button class="btn ghost sm" data-act="auto">Auto-fill lineup (least played first)</button>
+    <p class="hint"><b>Goalies</b>: tap each kid who will take turns in goal. Whoever you put in the GK spot starts, then it rotates in the order you tap.</p>
+    <div class="grid">${pres.map(r => { const i = pool.indexOf(r.id); return `<button class="pl ${i >= 0 ? 'field' : 'bench'}" data-act="gk" data-id="${r.id}"><span class="n">${esc(r.name)}${i >= 0 ? ' <span class="tag gk">GK</span>' : ''}</span><span class="t">${i >= 0 ? (i === 0 ? 'Starts in goal' : 'Goalie #' + (i + 1)) : 'Not a goalie'}</span></button>`; }).join('')}</div>
     <p class="hint">${gkText}</p>
-    <p class="hint"><b>Starters</b>: tap to start or sit.</p>
-    <div class="grid">${pres.map(r => { const s = st.includes(r.id); return `<button class="pl ${s ? 'field' : 'bench'}" data-act="starter" data-id="${r.id}"><span class="n">${esc(r.name)}${S.setup.gks[0] === r.id ? ' <span class="tag gk">GK</span>' : ''}</span><span class="t">${s ? 'Starts' : 'Bench'}</span></button>`; }).join('') || '<p class="empty">Nobody marked here yet.</p>'}</div>
-    <button class="btn ghost sm" data-act="auto">Auto-pick starters (least played first)</button>
     ${msg ? `<p class="hint warn">${msg}</p>` : ''}
     <button class="btn primary big" data-act="start" ${ok ? '' : 'disabled'}>Go to game screen</button>
   </section>
@@ -829,10 +878,10 @@ function playerSheet(id) {
 function act(a, d) {
   const g = S.game;
   switch (a) {
-    case 'here': { const r = R(d.id); r.here = !r.here; S.setup.edited = false; break; }
-    case 'del': S.roster = S.roster.filter(r => r.id !== d.id); S.setup.edited = false; break;
-    case 'add': addPlayers(ui.addText); ui.addText = ''; S.setup.edited = false; break;
-    case 'sample': addPlayers(SAMPLE.join(',')); S.setup.edited = false; break;
+    case 'here': { const r = R(d.id); r.here = !r.here; break; }
+    case 'del': S.roster = S.roster.filter(r => r.id !== d.id); break;
+    case 'add': addPlayers(ui.addText); ui.addText = ''; break;
+    case 'sample': addPlayers(SAMPLE.join(',')); break;
     case 'cfg': {
       const k = d.k, dv = +d.d, c = S.cfg;
       if (k === 'halfMin') c.halfMin = Math.min(45, Math.max(5, c.halfMin + dv));
@@ -843,14 +892,11 @@ function act(a, d) {
     case 'gk': {
       const s = S.setup;
       s.gks = s.gks.includes(d.id) ? s.gks.filter(x => x !== d.id) : [...s.gks, d.id];
-      s.edited = false; break;
-    }
-    case 'setsubs': S.cfg.subsPerHalf = +d.v; break;
-    case 'starter': {
-      const s = S.setup; s.edited = true;
-      s.starters = s.starters.includes(d.id) ? s.starters.filter(x => x !== d.id) : [...s.starters, d.id];
       break;
     }
+    case 'setsubs': S.cfg.subsPerHalf = +d.v; break;
+    case 'slot': slotSheet(+d.i); break;
+    case 'bsel': benchSheet(d.id); break;
     case 'auto': S.setup.edited = false; break;
     case 'start': startGame(); return;
     case 'alerts': enableAlerts(); return;
