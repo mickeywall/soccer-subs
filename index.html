@@ -564,7 +564,7 @@ function signal(kind, title, body, opt) {
   notify(title, body, Object.assign({ vibrate: pat }, opt));
 }
 const notifOK = () => 'Notification' in window && Notification.permission === 'granted';
-const BLOCKED_HELP = 'Notifications are blocked. In Chrome tap the ⓘ or lock icon next to the address, then Permissions, then Notifications, then Allow. For the installed app also check Android Settings → Apps → Sideline Subs → Notifications.';
+const BLOCKED_HELP = 'Chrome is blocking notifications for this app and cannot ask again. To undo it, open Chrome ⋮ → Settings → Site settings → Notifications → mickeywall.github.io and choose Allow (or Reset, which makes the app ask again). Also check Android Settings → Apps → Sideline Subs → Notifications.';
 // Returns {ok, msg}: msg says what happened so a silent failure is visible on the Alerts card.
 async function notify(title, body, opt = {}) {
   if (!('Notification' in window)) return { ok: false, msg: 'This browser cannot show notifications. Vibration and sound still work.' };
@@ -591,8 +591,16 @@ async function closeNotif(tag) {
 }
 async function enableAlerts() {
   audio();
-  try { if ('Notification' in window) await Notification.requestPermission(); } catch (e) {}
-  ui.alertMsg = Notification.permission === 'granted' ? 'Notifications allowed. Tap Test alert to try one.' : Notification.permission === 'denied' ? BLOCKED_HELP : 'You did not choose Allow. Tap Enable notifications to try again.';
+  if (!('Notification' in window)) { ui.alertMsg = 'This browser cannot show notifications. Vibration and sound still work.'; render(); return; }
+  const before = Notification.permission;
+  let now = before;
+  try { now = await Notification.requestPermission(); } catch (e) {}
+  now = Notification.permission || now;
+  ui.alertMsg = now === 'granted'
+    ? (before === 'granted' ? 'Notifications were already allowed. Tap Test alert to try one.' : 'Allowed. Tap Test alert to try one.')
+    : now === 'denied'
+      ? (before === 'denied' ? '' : 'You chose Block. ') + BLOCKED_HELP
+      : 'Chrome did not get an answer. Tap Enable notifications again and choose Allow.';
   render();
 }
 async function testAlert() {
@@ -743,7 +751,7 @@ function setupView() {
 
   <section class="card"><h2>Alerts</h2>
     <p class="hint">${perm === 'granted' ? 'Notifications are allowed. Your phone also vibrates and beeps for every alert.' : perm === 'denied' ? 'Notifications are blocked. ' + BLOCKED_HELP : perm === 'unsupported' ? 'Notifications are not available here. Vibration and sound still work.' : 'Notifications are not allowed yet. Phone vibration and sound work without them, but the watch needs notifications.'}</p>
-    <div class="row">${perm === 'default' ? '<button class="btn primary" data-act="alerts">Enable notifications</button>' : ''}<button class="btn" data-act="test">Test alert</button><button class="btn" data-act="testlater">Test in 15 s</button><button class="btn ghost" data-act="sound">Sound: ${S.sound ? 'on' : 'off'}</button></div>
+    <div class="row"><button class="btn${perm === 'granted' ? '' : ' primary'}" data-act="alerts">Enable notifications</button><button class="btn" data-act="test">Test alert</button><button class="btn" data-act="testlater">Test in 15 s</button><button class="btn ghost" data-act="sound">Sound: ${S.sound ? 'on' : 'off'}</button></div>
     ${ui.alertMsg ? `<p class="hint" role="status"><b>${esc(ui.alertMsg)}</b></p>` : ''}
     <p class="hint">Watches often stay quiet while the phone screen is on. “Test in 15 s” lets you lock the phone first so you can see whether the watch buzzes.</p>
   </section>
