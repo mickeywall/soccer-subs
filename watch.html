@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d7a3b">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="icon-192.png">
+<title>Live game</title>
+<style>
+:root{
+  --bg:#edf1e9; --surface:#ffffff; --surface-2:#e3e9dd; --ink:#13200f; --ink-2:#4b5b45; --line:#cdd6c7;
+  --pitch:#1d7a3b; --pitch-ink:#ffffff; --alert:#d9480f; --warn-bg:#fff6d6; --warn:#a86b00; --red:#d92d20; --green:#168a3f;
+  --grass:#3b9a5a; --grass-2:#358f53; --chalk:rgba(255,255,255,.75); --focus:#0b57d0;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0d1510; --surface:#16211a; --surface-2:#223027; --ink:#e7efe4; --ink-2:#a3b4a0; --line:#2c3d31;
+    --pitch:#3fb862; --pitch-ink:#07140b; --alert:#ff8a50; --warn-bg:#35300f; --warn:#f2c14e; --red:#ff6b5e; --green:#4cd07a;
+    --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --focus:#8ab4f8; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 var(--font);
+  padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(32px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input{font:inherit;color:inherit}
+.app{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.1rem;margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h2{font-size:.74rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);margin:0;font-weight:700}
+.hint{margin:0;font-size:.85rem;color:var(--ink-2)}
+.pill{font-size:.72rem;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);text-transform:uppercase}
+.pill.live{background:var(--pitch);color:var(--pitch-ink)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.board{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;text-align:center}
+.board .tn{font-size:.8rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);overflow-wrap:anywhere}
+.board .num{font-size:3.4rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.board .mid{display:flex;flex-direction:column;align-items:center;gap:2px}
+.clock{font-size:1.6rem;font-weight:800;font-variant-numeric:tabular-nums}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface-2);font-weight:650;padding:10px 14px;border-radius:12px;min-height:52px;cursor:pointer;touch-action:manipulation}
+.btn.primary{background:var(--pitch);color:var(--pitch-ink);border-color:transparent}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row .btn{flex:1}
+input[type=text]{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%}
+.pitch{position:relative;width:100%;aspect-ratio:100/104;border-radius:14px;overflow:hidden;background:repeating-linear-gradient(180deg,var(--grass) 0 13%,var(--grass-2) 13% 26%)}
+.pitch .lines{position:absolute;inset:0;width:100%;height:100%}
+.pitch .lines *{fill:none;stroke:var(--chalk);stroke-width:2;vector-effect:non-scaling-stroke}
+.pitch .lines .dot{fill:var(--chalk);stroke:none}
+.disc{position:absolute;transform:translate(-50%,-50%);width:28%;min-height:50px;padding:5px 6px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--ink);display:flex;flex-direction:column;align-items:center;text-align:center;line-height:1.15;min-width:0;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.disc .dpos{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--ink-2)}
+.disc .dn{font-weight:800;font-size:.95rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc.gk{background:var(--warn-bg);border-color:var(--warn)}
+.disc.empty{background:rgba(0,0,0,.28);border:2px dashed var(--red);color:#fff;box-shadow:none;justify-content:center}
+.disc.empty .dpos,.disc.empty .dn{color:#fff}
+.dev{display:flex;flex-wrap:wrap;gap:0 6px;justify-content:center;font-size:.74rem;line-height:1.25;font-variant-numeric:tabular-nums;max-width:100%}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pl{border:1px solid var(--line);border-left:6px solid #2f6f9f;border-radius:12px;padding:8px 10px;min-height:48px;min-width:0;display:flex;flex-direction:column}
+.pl .n{font-weight:700;overflow-wrap:anywhere}
+.pl.out{opacity:.55}
+.log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:.95rem}
+.log li{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline}
+.log li>b:first-child{min-width:3.4ch;font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.tag{font-size:.68rem;font-weight:800;letter-spacing:.05em;padding:2px 6px;border-radius:6px;background:var(--red);color:#fff}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;background:var(--surface);border-radius:18px 18px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;max-height:80vh;overflow:auto}
+.sheet h3{margin:0 0 4px;font-size:1.05rem}
+.sheet .btn{text-align:left}
+.shead{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin-top:6px}
+.empty-msg{padding:22px 4px;text-align:center;color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script src="share.js"></script>
+<script>
+'use strict';
+/* Read-only live view of a game. Scorer links also get two buttons that send a suggestion to the coach.
+   Nothing here is saved on the phone except the scorer's own name (so the coach knows who sent a suggestion). */
+const $app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+const ICON = { goal: '⚽', yellow: '🟨', red: '🟥' };
+const link = Share.parseLink(location.hash);
+const T = link ? Share.topics(link.id) : null;
+let state = null, lastSeq = -1, recvAt = 0, conn = 'connecting', sheet = null, sendMsg = '', lock = false;
+let myName = ''; try { myName = localStorage.getItem('watchName') || ''; } catch (e) {}
+
+function minute(half, c, H) { const off = half === 2 ? H : 0, m = Math.max(1, Math.ceil(c / 60000)); return (m > H ? (off + H) + '+' + (m - H) : off + m) + '′'; }
+function elapsed() {
+  const g = state && state.game; if (!g) return 0;
+  return g.c + (g.status === 'running' ? Math.max(0, Date.now() - state.t) : 0);
+}
+
+/** True when the message was a genuine update from the coach (even if we already have a newer one). */
+async function accept(text) {
+  const st = await Share.openState(link, text);
+  if (!st || st.v !== 1 || typeof st.seq !== 'number') return false;
+  if (st.seq <= lastSeq) return true;
+  if (lastSeq < 0 && Date.now() - st.t > 12 * 3600 * 1000) return false;   // an old leftover, not live
+  lastSeq = st.seq; state = st; recvAt = Date.now(); render();
+  return true;
+}
+/** Anyone with the link can post junk, so the newest message is not always a real one. Ask for the latest first,
+ *  and if that was junk, go through everything the relay still has and keep the newest genuine update. */
+async function loadRecent() {
+  let lastId = '';
+  for (const since of ['latest', 'all']) {
+    let got = false;
+    const msgs = await Share.Relay.recent(link.relay, T.state, since);
+    for (const m of msgs) { lastId = m.id; if (await accept(m.message)) got = true; }
+    if (got) break;
+  }
+  return lastId;
+}
+
+const PITCH = `<svg class="lines" viewBox="0 0 100 104" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="2" width="96" height="100"/><path d="M36 2A14 14 0 0 0 64 2"/><rect x="22" y="80" width="56" height="22"/><rect x="38" y="93" width="24" height="9"/><path d="M41 80A9 9 0 0 1 59 80"/><circle cx="50" cy="88" r=".8" class="dot"/></svg>`;
+const FORM = { '2-3-1': [[50, 89], [29, 67], [71, 67], [16, 41], [50, 45], [84, 41], [50, 15]], '3-2-1': [[50, 89], [16, 67], [50, 71], [84, 67], [29, 42], [71, 42], [50, 15]], '2-2-2': [[50, 89], [29, 67], [71, 67], [29, 42], [71, 42], [29, 15], [71, 15]], '1-3-2': [[50, 89], [50, 69], [16, 43], [50, 47], [84, 43], [29, 15], [71, 15]] };
+
+function evBadges(g, name) {
+  const evs = g.ev.filter(e => e[1] === name && name);
+  return evs.length ? '<span class="dev">' + evs.map(e => `<span>${ICON[e[0]]}${e[0] === 'goal' ? ' ' + minute(e[2], e[3], state.half) : ''}</span>`).join('') + '</span>' : '';
+}
+function logRows(g) {
+  const rows = []; let us = 0, them = 0;
+  g.ev.map((e, i) => ({ e, i })).sort((a, b) => a.e[2] - b.e[2] || a.e[3] - b.e[3] || a.i - b.i).forEach(({ e, i }) => {
+    const [type, who, half, c] = e, m = minute(half, c, state.half), w = who ? esc(who) : 'Own goal or unknown';
+    let h;
+    if (type === 'goal') { us++; h = `⚽ <b>${w}</b> scored <span class="muted">${us}–${them}</span>`; }
+    else if (type === 'opp') { them++; h = `⚽ <b>${esc(state.opp || 'Them')}</b> scored <span class="muted">${us}–${them}</span>`; }
+    else if (type === 'yellow') h = `🟨 <b>${w}</b> yellow card`;
+    else h = `🟥 <b>${w}</b> red card, sent off`;
+    rows.push({ k: [half, c, i], html: `<li><b>${m}</b> <span>${h}</span></li>` });
+  });
+  return rows.sort((a, b) => b.k[0] - a.k[0] || b.k[1] - a.k[1] || b.k[2] - a.k[2]).map(r => r.html);
+}
+
+function gameHtml(g) {
+  const F = FORM[g.formation] || FORM['2-3-1'];
+  const discs = g.field.map((name, i) => {
+    const [x, y] = F[i] || [50, 50], pos = g.pos[i] || '';
+    if (!name) return `<div class="disc empty" style="left:${x}%;top:${y}%"><span class="dpos">${esc(pos)}</span><span class="dn">Man down</span></div>`;
+    return `<div class="disc${name === g.gk ? ' gk' : ''}" style="left:${x}%;top:${y}%"><span class="dpos">${esc(pos)}</span><span class="dn">${esc(name)}</span>${evBadges(g, name)}</div>`;
+  }).join('');
+  const rows = logRows(g);
+  return `<div class="pitch">${PITCH}${discs}</div>
+    <section class="card"><h2>Bench</h2>${g.bench.length || g.out.length ? `<div class="grid">${g.bench.map(n => `<div class="pl"><span class="n">${esc(n)}</span>${evBadges(g, n)}</div>`).join('')}${g.out.map(n => `<div class="pl out"><span class="n">${esc(n)} <span class="tag">OFF</span></span>${evBadges(g, n)}</div>`).join('')}</div>` : '<p class="hint">Nobody on the bench.</p>'}</section>
+    <section class="card"><h2>Goals and cards</h2>${rows.length ? `<ul class="log">${rows.join('')}</ul>` : '<p class="hint">Nothing yet.</p>'}</section>`;
+}
+
+function scorerHtml() {
+  const g = state && state.game;
+  const on = g && g.status !== 'final';
+  return `<section class="card"><h2>Send a score to the coach</h2>
+    <label class="hint" for="nm">Your name, so the coach knows who sent it</label>
+    <input type="text" id="nm" value="${esc(myName)}" autocomplete="off" maxlength="24" placeholder="For example: Sam's dad">
+    <div class="row"><button class="btn primary" data-act="we" ${on ? '' : 'disabled'}>⚽ We scored</button><button class="btn" data-act="they" ${on ? '' : 'disabled'}>They scored</button></div>
+    <p class="hint" role="status">${esc(sendMsg) || 'The coach sees your suggestion and taps Accept. Only the coach can change the score.'}</p></section>`;
+}
+
+function render() {
+  if (!link) { $app.innerHTML = '<p class="empty-msg">This link is not complete. Ask the coach to send it again.</p>'; return; }
+  const g = state && state.game;
+  const age = state ? Math.round((Date.now() - recvAt) / 1000) : 0;
+  const stale = state && g && g.status === 'running' && Date.now() - recvAt > 8 * 60000;
+  let pill = '<span class="pill">Connecting</span>';
+  if (state && state.closed) pill = '<span class="pill">Sharing stopped</span>';
+  else if (conn === 'offline') pill = '<span class="pill warn">Reconnecting</span>';
+  else if (stale) pill = '<span class="pill warn">No recent update</span>';
+  else if (g && g.status === 'final') pill = '<span class="pill">Full time</span>';
+  else if (g) pill = '<span class="pill live">Live</span>';
+  else if (state) pill = '<span class="pill">No game yet</span>';
+  const team = (state && state.team) || 'Us', opp = (state && state.opp) || 'Them';
+  let body;
+  if (!state) body = '<p class="empty-msg">Waiting for the coach to start the game…</p>';
+  else if (state.closed) body = '<p class="empty-msg">The coach has stopped sharing this game.</p>';
+  else if (!g) body = '<p class="empty-msg">No game is running right now. This page updates by itself when one starts.</p>';
+  else {
+    const label = (g.period === 1 ? '1st half' : '2nd half') + ' · ' + ({ ready: g.period === 2 ? 'Halftime' : 'Not started', running: 'Running', paused: 'Paused', final: 'Full time' }[g.status]);
+    body = `<section class="card"><div class="board"><div><div class="tn">${esc(team)}</div><div class="num">${g.us}</div></div>
+      <div class="mid"><div class="clock" id="clk">${fmt(elapsed())}</div><span class="hint">${label}</span>${g.down ? `<span class="tag">${g.down} DOWN</span>` : ''}</div>
+      <div><div class="tn">${esc(opp)}</div><div class="num">${g.them}</div></div></div></section>${gameHtml(g)}`;
+  }
+  const focus = document.activeElement && document.activeElement.id === 'nm';
+  const keep = focus ? { v: document.activeElement.value, s: document.activeElement.selectionStart } : null;
+  $app.innerHTML = `<div class="top"><h1>${link.scorer ? 'Scorer view' : 'Live game'}</h1>${pill}</div>${body}${link.scorer ? scorerHtml() : ''}
+    <p class="hint">${state ? 'Last update ' + (age < 5 ? 'just now' : age < 90 ? age + ' seconds ago' : Math.round(age / 60) + ' minutes ago') + '. ' : ''}This page only shows what the coach shares. It cannot change anything${link.scorer ? ' except suggest a score' : ''}.</p>${sheetHtml()}`;
+  if (keep) { const el = document.getElementById('nm'); if (el) { el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.s); } catch (e) {} } }
+}
+function sheetHtml() {
+  if (!sheet) return '';
+  return `<div class="scrim" data-act="close"><div class="sheet" role="dialog" aria-label="${esc(sheet.title)}" data-stop="1"><h3>${esc(sheet.title)}</h3>${sheet.items.map((it, i) => it.head ? `<div class="shead">${esc(it.head)}</div>` : `<button class="btn" data-act="pick" data-i="${i}">${esc(it.label)}</button>`).join('')}<button class="btn" data-act="close">Cancel</button></div></div>`;
+}
+
+async function send(kind, who) {
+  if (!link || !link.scorer || !state || !state.game) return;
+  const g = state.game, now = Date.now();
+  const note = { cid: crypto.randomUUID ? crypto.randomUUID() : String(now) + Math.random(), kind, who: who || '', half: g.period, c: elapsed(), t: now, from: myName.trim() };
+  try {
+    await Share.Relay.publish(link.relay, T.inbox, await Share.sealNote(link, note));
+    sendMsg = 'Sent at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Waiting for the coach to accept it.';
+  } catch (e) { sendMsg = 'Could not send. Check your signal and try again.'; }
+  render();
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'close' && e.target.closest('[data-stop]') && !e.target.closest('button')) return;
+  const a = el.dataset.act, g = state && state.game;
+  if (a === 'close') sheet = null;
+  else if (a === 'pick') { const it = sheet.items[+el.dataset.i]; sheet = null; if (it && it.fn) it.fn(); }
+  else if ((a === 'we' || a === 'they') && g && !lock) {
+    lock = true; setTimeout(() => { lock = false; }, 1500);              // ignore double taps
+    if (a === 'they') send('opp', ''); else {
+      const names = [...g.field.filter(Boolean), ...g.bench];
+      sheet = { title: 'Who scored?', items: [{ head: 'Players' }, ...names.map(n => ({ label: n, fn: () => send('goal', n) })), { head: 'Other' }, { label: 'Not sure who', fn: () => send('goal', '') }] };
+    }
+  }
+  render();
+});
+document.addEventListener('input', e => { if (e.target.id === 'nm') { myName = e.target.value; try { localStorage.setItem('watchName', myName); } catch (err) {} } });
+
+(async function start() {
+  render();
+  if (!link) return;
+  setInterval(() => { const c = document.getElementById('clk'); if (c && state && state.game) c.textContent = fmt(elapsed()); }, 500);
+  setInterval(render, 20000);                                            // refresh the "last update" text and stale warning
+  let lastId = '';
+  try { lastId = await loadRecent(); } catch (e) { conn = 'offline'; render(); }
+  Share.Relay.subscribe(link.relay, T.state, lastId || '', m => accept(m), s => { conn = s; render(); });
+})();
+</script>
+</body>
+</html>

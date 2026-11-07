@@ -135,6 +135,11 @@ input[type=text]{flex:1;min-width:0}
 .dev{display:flex;flex-wrap:wrap;gap:0 6px;justify-content:center;font-size:.74rem;line-height:1.25;font-variant-numeric:tabular-nums;color:var(--ink);max-width:100%}
 .pl .dev{justify-content:flex-start}
 .lscore{font-size:1.3rem;font-weight:800;font-variant-numeric:tabular-nums}
+.inbox{border:2px solid var(--green)}
+.linkrow{display:flex;flex-direction:column;gap:6px}
+.linkbox{font-size:.78rem;width:100%;color:var(--ink-2)}
+summary{cursor:pointer;color:var(--ink-2);font-size:.9rem;padding:6px 0}
+details input{width:100%;margin-top:6px}
 .sw{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap}
 .aoff,.aon{font-weight:900;font-size:.95em}
 .aoff{color:var(--red)}
@@ -191,6 +196,7 @@ input[type=text]{flex:1;min-width:0}
 </head>
 <body>
 <div class="app" id="app"></div>
+<script src="share.js"></script>
 <script>
 'use strict';
 /* ============ helpers & state ============ */
@@ -207,21 +213,23 @@ const DEFAULT = () => ({
   setup: { lineup: [], starters: [], gks: [], edited: false },   // lineup = starters by pitch slot (slot 0 = GK); gks = goalie pool
   sound: true,
   results: [],                                  // final score of each finished game
+  share: { on: false, relay: '', team: '', opp: '', seq: 0, seen: [] },   // live sharing (keys are added when you start it)
   game: null,
 });
 function load() {
   try {
     const r = JSON.parse(localStorage.getItem(KEY));
     if (r && Array.isArray(r.roster)) {
-      const d = DEFAULT(), o = Object.assign(d, r, { cfg: Object.assign(d.cfg, r.cfg), setup: Object.assign(d.setup, r.setup) });
-      if (o.game) { const g = o.game; g.queue = g.queue || []; g.events = g.events || []; g.gkNext = g.gkNext || ''; g.alert = ''; g.formation = g.formation || '2-3-1'; delete g.pending; }
+      const d = DEFAULT(), o = Object.assign(d, r, { cfg: Object.assign(d.cfg, r.cfg), setup: Object.assign(d.setup, r.setup), share: Object.assign(d.share, r.share) });
+      if (o.game) { const g = o.game; g.queue = g.queue || []; g.inbox = g.inbox || []; g.events = g.events || []; g.gkNext = g.gkNext || ''; g.alert = ''; g.formation = g.formation || '2-3-1'; delete g.pending; }
       return o;
     }
   } catch (e) {}
   return DEFAULT();
 }
 let S = load();
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const save = () => { persist(); sharePing(); };
 const ui = { addText: '', sheet: null, locked: false, confirm: null, alertMsg: '' };
 
 const R = id => S.roster.find(p => p.id === id);
@@ -417,8 +425,8 @@ function evMinute(ev) {
   const H = S.cfg.halfMin, off = ev.half === 2 ? H : 0, m = Math.max(1, Math.ceil(ev.c / 60000));
   return (m > H ? (off + H) + '+' + (m - H) : off + m) + '′';
 }
-function addEvent(g, type, id) {
-  g.events.push({ type, id: id || '', half: g.period, c: clockMs(g), n: nextSeq(g) });
+function addEvent(g, type, id, at) {
+  g.events.push({ type, id: id || '', half: at ? at.half : g.period, c: at ? at.c : clockMs(g), n: nextSeq(g) });
   if (type === 'red' && id) sendOff(g, id);
 }
 // A red card takes the kid off at once and nobody replaces them: the team plays a man down for the rest of the game.
@@ -857,6 +865,8 @@ function setupView() {
     <p class="hint">Watches often stay quiet while the phone screen is on. “Test in 15 s” lets you lock the phone first so you can see whether the watch buzzes.</p>
   </section>
 
+  ${shareCard()}
+
   ${S.roster.some(r => r.tot) ? `<button class="btn danger sm" data-act="resettot">${ui.confirm === 'resettot' ? 'Tap again to clear totals' : 'Reset tournament totals'}</button>` : ''}`;
 }
 
@@ -939,6 +949,7 @@ function gameView() {
   return `
   ${clockBar(g)}
   ${scoreBar(g)}
+  ${inboxView(g)}
   ${g.status === 'ready' ? `<p class="hint">${g.ht ? 'Halftime changes are already in (green IN, red OFF). ' : ''}Tap a player to swap them with the bench or switch positions. Subs here happen straight away because the clock is stopped.</p>` : ''}
   ${pitchView(g)}
   <p class="hint">Dot on a player: orange has played more than the team average, blue has played less. Tap a player to sub them.</p>
@@ -946,6 +957,7 @@ function gameView() {
   ${g.status === 'running' || g.status === 'paused' ? `<section class="card" id="sugg">${suggestInner(g)}</section>` : ''}
   <section class="card"><h2>Game log</h2>${(() => { const r = logRows(g); return r.length ? `<ul class="log">${r.join('')}</ul>` : '<p class="empty">Subs, goals and cards will show here.</p>'; })()}
     <div class="row"><button class="btn sm" data-act="undo" ${g.hist.length ? '' : 'disabled'}>Undo last change</button>
+    ${typeof Share !== 'undefined' ? `<button class="btn ghost sm" data-act="sharesheet">${shareOn() ? '● Sharing live' : 'Share live'}</button>` : ''}
     ${g.status === 'ready' && g.period === 1 ? '<button class="btn ghost sm" data-act="back">Back to setup</button>' : ''}</div></section>
   ${dockView(g)}`;
 }
@@ -1103,6 +1115,16 @@ function act(a, d) {
     case 'clearq': g.queue = []; g.gkNext = ''; g.alert = ''; closeNotif('subs'); break;
     case 'sq': queueAdd(g, d.off, d.on, false); break;
     case 'sqall': suggestPairs(g, 3).forEach(([o, n]) => queueAdd(g, o, n, false)); break;
+    case 'shstart': shareStart().then(render); return;
+    case 'shstop': shareStop().then(render); return;
+    case 'shnew':
+      if (ui.confirm === 'shnew') { ui.confirm = null; shareNew().then(render); return; }
+      ui.confirm = 'shnew'; setTimeout(() => { if (ui.confirm === 'shnew') { ui.confirm = null; render(); } }, 3500); break;
+    case 'shcopy': copyShare(d.k === 'scorer' ? shareLinks().scorer : shareLinks().watch, d.k === 'scorer' ? 'Scorer' : 'Watch'); return;
+    case 'shsend': shareNative(d.k); return;
+    case 'sharesheet': shareSheet(); break;
+    case 'inaccept': inboxAccept(+d.i); break;
+    case 'inreject': g.inbox.splice(+d.i, 1); break;
     case 'player': playerSheet(d.id); break;
     case 'hole': holeSheet(+d.i); break;
     case 'ourgoal': scorerSheet(); break;
@@ -1122,7 +1144,12 @@ document.addEventListener('click', e => {
   if (el.dataset.act === 'sheetclose' && e.target.closest('[data-stop]') && !e.target.closest('button')) return;
   act(el.dataset.act, el.dataset);
 });
-document.addEventListener('input', e => { if (e.target.id === 'addText') ui.addText = e.target.value; });
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'addText') ui.addText = t.value;
+  else if (t.id === 'shTeam' || t.id === 'shOpp') { S.share[t.id === 'shTeam' ? 'team' : 'opp'] = t.value.trim().slice(0, 24); persist(); sharePing(); }
+  else if (t.id === 'shRelay') { S.share.relay = t.value.trim().replace(/\/+$/, ''); persist(); }
+});
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'addText') { e.preventDefault(); act('add', {}); } });
 let holdTimer = null;
 document.addEventListener('pointerdown', e => {
@@ -1133,6 +1160,149 @@ document.addEventListener('pointerdown', e => {
   clearTimeout(holdTimer); const h = document.querySelector('.holding'); if (h) h.classList.remove('holding');
 }));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { wake(); tick(); } });
+
+/* ============ live sharing ============ */
+// Your phone publishes an encrypted, signed snapshot whenever something watchers can see changes (about 60 messages a game).
+// Watchers use watch.html. A scorer link can send score suggestions, which show up here for you to accept or reject.
+const SH = { sub: null, timer: null, retry: null, busy: false, dirty: false, force: false, sig: '', lastPub: 0, err: '', conn: 'off', minGap: 4000 };
+const shareOn = () => typeof Share !== 'undefined' && !!S.share && S.share.on && !!S.share.id;
+const shareBase = () => location.origin + location.pathname.replace(/[^/]*$/, '');
+const shareLinks = () => ({ watch: Share.makeLink(shareBase(), S.share, S.share.relay, false), scorer: Share.makeLink(shareBase(), S.share, S.share.relay, true) });
+function shareSnapshot() {
+  const sh = S.share, g = S.game, snap = { v: 1, t: Date.now(), seq: 0, team: sh.team || '', opp: sh.opp || '', half: S.cfg.halfMin, game: null };
+  if (!g) return snap;
+  const F = slotsOf(g), name = id => (id ? nm(id) : ''), sc = scoreOf(g);
+  snap.game = {
+    period: g.period, status: g.status, c: clockMs(g), formation: g.formation,
+    field: g.field.map(name), pos: g.field.map((_, i) => (F[i] || [''])[0]), gk: name(g.gk),
+    bench: g.bench.filter(id => !g.p[id].out).map(nm), out: (g.sentOff || []).map(x => nm(x.id)),
+    down: g.field.filter(x => !x).length, us: sc.us, them: sc.them,
+    ev: g.events.map(e => [e.type, name(e.id), e.half, e.c]),
+  };
+  return snap;
+}
+function shareSig(snap) { const o = JSON.parse(JSON.stringify(snap)); delete o.t; delete o.seq; if (o.game) delete o.game.c; return JSON.stringify(o); }
+function sharePing(force) {
+  if (!shareOn()) return;
+  if (force) SH.force = true;
+  clearTimeout(SH.timer); SH.timer = setTimeout(shareFlush, force ? 30 : 1200);
+}
+async function shareFlush() {
+  if (!shareOn()) return;
+  if (SH.busy) { SH.dirty = true; return; }
+  const snap = shareSnapshot(), sig = shareSig(snap), now = Date.now();
+  const beat = snap.game && snap.game.status === 'running' && now - SH.lastPub > 4 * 60000;     // lets watchers know you are still there
+  if (sig === SH.sig && !SH.force && !beat) return;
+  const wait = SH.minGap - (now - SH.lastPub);                                                // at most one message every 4 seconds
+  if (wait > 0 && !SH.force) { clearTimeout(SH.timer); SH.timer = setTimeout(shareFlush, wait + 50); return; }
+  SH.busy = true; SH.force = false;
+  try {
+    S.share.seq += 1; snap.seq = S.share.seq; persist();
+    let text = await Share.sealState(S.share, snap);
+    if (text.length > 3800 && snap.game) { snap.game.ev = snap.game.ev.slice(-20); text = await Share.sealState(S.share, snap); }   // relay messages are limited to about 4 KB
+    await Share.Relay.publish(S.share.relay, Share.topics(S.share.id).state, text);
+    SH.sig = sig; SH.lastPub = Date.now(); SH.err = ''; clearTimeout(SH.retry);
+  } catch (e) {
+    SH.err = e && e.status === 429 ? 'limit' : 'offline';
+    clearTimeout(SH.retry); SH.retry = setTimeout(() => { SH.force = true; shareFlush(); }, SH.err === 'limit' ? 90000 : 20000);
+  } finally {
+    SH.busy = false; if (SH.dirty) { SH.dirty = false; sharePing(); }
+    shareStatusEl();
+  }
+}
+function shareConnect() {
+  shareDisconnect();
+  if (!shareOn()) return;
+  SH.sub = Share.Relay.subscribe(S.share.relay, Share.topics(S.share.id).inbox, 'all', t => shareInbox(t), s => { SH.conn = s; shareStatusEl(); });
+}
+function shareDisconnect() { if (SH.sub) SH.sub.close(); SH.sub = null; }
+async function shareInbox(text) {
+  const n = await Share.openNote(S.share, text);                       // only notes made with the scorer key get through
+  if (!n || !n.cid || S.share.seen.includes(n.cid)) return;
+  S.share.seen.push(n.cid); S.share.seen = S.share.seen.slice(-300);
+  const g = S.game;
+  if (!g || g.status === 'final' || (n.kind !== 'goal' && n.kind !== 'opp')) { persist(); return; }
+  const lim = 3 * halfMs();
+  (g.inbox = g.inbox || []).push({ cid: n.cid, kind: n.kind, who: String(n.who || '').slice(0, 40), half: n.half === 2 ? 2 : 1, c: Math.min(lim, Math.max(0, +n.c || 0)), from: String(n.from || '').slice(0, 24) });
+  g.inbox = g.inbox.slice(-20);
+  persist(); render();
+  const it = g.inbox[g.inbox.length - 1];
+  signal('soon', 'Score suggestion', (it.from ? it.from + ': ' : '') + (it.kind === 'opp' ? 'they scored' : (it.who || 'someone') + ' scored'), { tag: 'inbox' });
+}
+function inboxAccept(i) {
+  const g = S.game, it = g && (g.inbox || [])[i]; if (!it) return;
+  const id = it.kind === 'goal' && it.who ? ((S.roster.find(r => r.name === it.who && g.p[r.id]) || {}).id || '') : '';
+  addEvent(g, it.kind === 'opp' ? 'opp' : 'goal', id, { half: it.half, c: it.c });
+  g.inbox.splice(i, 1);
+}
+function inboxView(g) {
+  const items = g.inbox || [];
+  if (!items.length) return '';
+  return `<section class="card inbox" aria-live="polite"><h2>Score suggestions</h2>${items.map((it, i) => `<div class="qrow"><span class="qn">${it.from ? '<b>' + esc(it.from) + '</b> says ' : ''}⚽ <b>${it.kind === 'opp' ? 'they' : esc(it.who || 'someone')}</b> scored <span class="muted">${evMinute(it)}</span></span><button class="btn sm primary" data-act="inaccept" data-i="${i}">Accept</button><button class="btn sm" data-act="inreject" data-i="${i}">Reject</button></div>`).join('')}<p class="hint">Only you can change the score. Accept adds it to the score and the game log.</p></section>`;
+}
+async function shareStart() {
+  if (typeof Share === 'undefined' || !window.crypto || !crypto.subtle) { ui.shareMsg = 'Live sharing needs the secure https address of the app.'; return; }
+  const sh = S.share;
+  if (!sh.id) Object.assign(sh, await Share.newSession());
+  if (!sh.relay) sh.relay = Share.DEFAULT_RELAY;
+  ui.shareMsg = ''; sh.on = true; persist(); shareConnect(); sharePing(true);
+}
+async function shareClosedNote() {
+  try { const sh = S.share; sh.seq += 1; await Share.Relay.publish(sh.relay, Share.topics(sh.id).state, await Share.sealState(sh, { v: 1, t: Date.now(), seq: sh.seq, closed: true, game: null })); } catch (e) {}
+}
+async function shareStop() { if (shareOn()) await shareClosedNote(); S.share.on = false; shareDisconnect(); SH.sig = ''; persist(); }
+async function shareNew() {                                              // new links: everything about the old ones stops working
+  const sh = S.share, was = shareOn();
+  if (was) await shareClosedNote();
+  shareDisconnect();
+  Object.assign(sh, await Share.newSession(), { seq: 0, seen: [] });
+  SH.sig = ''; SH.lastPub = 0; SH.err = '';
+  if (was) { sh.on = true; persist(); shareConnect(); sharePing(true); } else persist();
+}
+function shareStatusText() {
+  if (!shareOn()) return '';
+  if (SH.err === 'limit') return 'The relay is limiting messages right now, so watchers may see updates late. It clears by itself.';
+  if (SH.err === 'offline') return 'No connection to the relay. The app works as normal and will catch watchers up when the connection returns.';
+  if (!SH.lastPub) return 'Starting…';
+  return 'Sharing is on. Last update sent at ' + new Date(SH.lastPub).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + '.';
+}
+function shareStatusEl() { const el = document.getElementById('shStatus'); if (el) el.textContent = shareStatusText(); }
+async function copyShare(url, what) {
+  try { await navigator.clipboard.writeText(url); ui.shareMsg = what + ' link copied. Paste it into a message.'; }
+  catch (e) { ui.shareMsg = 'Could not copy automatically. Press and hold the link box, select all, and copy.'; }
+  render();
+}
+async function shareNative(kind) {
+  const L = shareLinks(), url = kind === 'scorer' ? L.scorer : L.watch;
+  try { if (navigator.share) { await navigator.share({ title: 'Watch our game live', text: kind === 'scorer' ? 'Scorer link:' : 'Follow the game live:', url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  copyShare(url, kind === 'scorer' ? 'Scorer' : 'Watch');
+}
+function shareCard() {
+  if (typeof Share === 'undefined') return '';
+  const sh = S.share, on = shareOn(), names = `<div class="field-row"><label for="shTeam">Your team name</label><input type="text" id="shTeam" value="${esc(sh.team || '')}" maxlength="24" placeholder="Us"></div>
+    <div class="field-row"><label for="shOpp">Opponent</label><input type="text" id="shOpp" value="${esc(sh.opp || '')}" maxlength="24" placeholder="Them"></div>`;
+  if (!on) return `<section class="card"><h2>Live sharing</h2>
+    <p class="hint">Let parents follow the game on their own phones: score, clock, who is where, and goals and cards. They can not change anything. You can also give one trusted person a scorer link, and their goal taps reach you as suggestions that you accept.</p>
+    ${names}
+    <p class="hint">Updates are encrypted on your phone before they are sent through a free public relay (ntfy.sh), which only sees scrambled text. Player names are sent exactly as you typed them in the roster, so use first names or initials if you prefer.</p>
+    <details><summary>Relay server</summary><input type="text" id="shRelay" value="${esc(sh.relay || Share.DEFAULT_RELAY)}" autocomplete="off" spellcheck="false"></details>
+    <button class="btn primary" data-act="shstart">Start sharing</button>${ui.shareMsg ? `<p class="hint warn">${esc(ui.shareMsg)}</p>` : ''}</section>`;
+  const L = shareLinks();
+  const row = (label, hint, url, k, what) => `<div class="linkrow"><b>${label}</b><span class="hint">${hint}</span><input type="text" class="linkbox" readonly value="${esc(url)}" aria-label="${label}" onfocus="this.select()"><div class="row"><button class="btn sm primary" data-act="shcopy" data-k="${k}">Copy</button><button class="btn sm" data-act="shsend" data-k="${k}">Share…</button></div></div>`;
+  return `<section class="card"><h2>Live sharing</h2><p class="hint" id="shStatus">${esc(shareStatusText())}</p>
+    ${row('Watch link', 'For parents. Read only.', L.watch, 'watch')}
+    ${row('Scorer link', 'For one trusted person. Can suggest goals; you accept each one.', L.scorer, 'scorer')}
+    ${ui.shareMsg ? `<p class="hint"><b>${esc(ui.shareMsg)}</b></p>` : ''}
+    ${names}
+    <p class="hint">Anyone who has a link can watch, so only send it to people you trust. If a link gets out, tap Make new links and send the new ones. The old links stop working.</p>
+    <div class="row"><button class="btn ghost sm" data-act="shnew">${ui.confirm === 'shnew' ? 'Tap again: old links stop working' : 'Make new links'}</button><button class="btn danger sm" data-act="shstop">Stop sharing</button></div></section>`;
+}
+function shareSheet() {
+  if (typeof Share === 'undefined') return;
+  if (!shareOn()) { openSheet('Live sharing', [{ head: 'Sharing is off. Anyone you send a link to can follow the game.' }, { label: 'Start sharing', fn: () => { shareStart().then(render); } }]); return; }
+  openSheet('Live sharing', [{ head: shareStatusText() }, { label: 'Share the watch link…', fn: () => shareNative('watch') }, { label: 'Share the scorer link…', fn: () => shareNative('scorer') },
+    { head: 'Stop' }, { label: 'Stop sharing', fn: () => { shareStop().then(render); } }]);
+}
 
 /* ============ boot ============ */
 if ('serviceWorker' in navigator) {
@@ -1148,6 +1318,8 @@ try {
   if (q.get('action')) { handleAction(q.get('action'), +q.get('t') || Date.now()); history.replaceState(null, '', location.pathname); }
 } catch (e) {}
 render(); wake(); tick();
+if (shareOn()) { shareConnect(); sharePing(true); }
+setInterval(() => sharePing(), 60000);
 setInterval(tick, 250);
 </script>
 </body>

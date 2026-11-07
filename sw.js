@@ -1,6 +1,6 @@
 /* Sideline Subs service worker: offline cache + notification button taps (from phone or Pixel Watch). */
-const CACHE = 'sideline-subs-v2';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'sideline-subs-v3';
+const ASSETS = ['./', './index.html', './share.js', './watch.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

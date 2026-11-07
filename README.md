@@ -2,11 +2,11 @@
 
 Substitution timer for youth soccer (built for U10 7v7, 22-minute halves). It buzzes your phone and watch when a sub is due, picks who comes off and who goes on so everyone gets about the same time, and keeps tournament totals so game 2 starts with the kids who played least.
 
-No server, no account. Everything is saved on the phone. After the first load it works with no signal.
+No server of its own and no account. Everything is saved on the phone, and after the first load it works with no signal. Live sharing with parents (below) is optional and off until you start it.
 
 ## Put it on your phone
 
-The app is five static files in this repo. It is hosted with GitHub Pages: Settings → Pages → Deploy from branch → `main` / `(root)` → Save. After a minute or two the site is at `https://<your-username>.github.io/soccer-subs/`.
+The app is a handful of static files in this repo (`index.html`, `watch.html`, `share.js`, `sw.js`, the manifest and two icons). It is hosted with GitHub Pages: Settings → Pages → Deploy from branch → `main` / `(root)` → Save. After a minute or two the site is at `https://<your-username>.github.io/soccer-subs/`.
 
 On the Pixel: open that address in Chrome, menu → **Install app** (or Add to Home screen). Open it once with signal so it caches. Then in the app, tap **Enable notifications**, and **Test alert**.
 
@@ -43,3 +43,20 @@ Things to know:
 - Keep the app open with the screen on. It asks the phone to stay awake while a game is running. If you press the power button, the clock stays accurate but alerts wait until you open the app again.
 - Run **Test alert** at home with the watch on. If the watch does not buzz, check that notifications from Chrome (or the installed app) are allowed on the watch in the Pixel Watch app.
 - Vibration and sound work only after you have tapped something in the app since it opened.
+
+## Live sharing
+
+Parents can follow a game on their own phones, and one trusted person can send you score suggestions. You decide whether to use it.
+
+**Set it up.** On the setup screen, open **Live sharing**, optionally type your team name and the opponent, and tap **Start sharing**. You get two links:
+
+- **Watch link** (for parents). Read only. Shows the clock, score, who is playing where, the bench, and goals and cards. It does not show minutes played or sub suggestions.
+- **Scorer link** (for one trusted person). Same view plus **We scored** and **They scored** buttons. Their taps arrive on your phone as **Score suggestions** with the minute they saw. Nothing changes until you tap **Accept**, and **Reject** drops it.
+
+Send the links with **Share…** or **Copy**. The same links work for every game that day. **Make new links** replaces both (the old ones stop working) and **Stop sharing** tells watchers sharing has ended. During a game, the **Share live** button next to Undo shows the status.
+
+**Who can change what.** Only your phone creates the game. Subs, lineups, positions and cards can never be changed from a link. Watch pages verify every update against a key that only your phone holds, and ignore anything else. A scorer link can only send score suggestions, and your phone ignores any suggestion that was not made with the scorer key.
+
+**Privacy.** Updates are encrypted on your phone and then sent through a free public message relay (ntfy.sh by default). The relay only sees scrambled text. The keys live in the part of the link after the `#`, which browsers do not send to any server. Player names are sent exactly as you typed them in the roster, so use first names or initials if you prefer. Anyone who has a link can watch, so only send it to people you trust.
+
+**Bad signal.** The app works as normal without a connection and tells you when the relay cannot be reached. It sends again when the connection returns. Watchers' clocks run on their own between updates, so very little is sent (roughly 60 messages in a game). The free relay limits how many messages one phone can send in a day; if it is limiting you the app says so, and the game itself is never affected. You can point the app at your own ntfy server under **Relay server** before you start sharing.
