@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d7a3b">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Sideline Subs</title>
+<style>
+/* Layout: one thumb-friendly column. Clock and the sub card sit on top, field and bench grids below. */
+:root{
+  --bg:#edf1e9; --surface:#ffffff; --surface-2:#e3e9dd; --ink:#13200f; --ink-2:#4b5b45; --line:#cdd6c7;
+  --pitch:#1d7a3b; --pitch-ink:#ffffff; --alert:#d9480f; --alert-bg:#fff0e6; --warn-bg:#fff6d6; --warn:#a86b00;
+  --bench:#2f6f9f; --focus:#0b57d0; --grass:#3b9a5a; --grass-2:#358f53; --chalk:rgba(255,255,255,.75); --hi:#e8590c; --lo:#2f6f9f;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1510; --surface:#16211a; --surface-2:#223027; --ink:#e7efe4; --ink-2:#a3b4a0; --line:#2c3d31;
+    --pitch:#3fb862; --pitch-ink:#07140b; --alert:#ff8a50; --alert-bg:#3a2012; --warn-bg:#35300f; --warn:#f2c14e;
+    --bench:#6fb1e0; --focus:#8ab4f8; --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --hi:#ff8a50; --lo:#6fb1e0; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1510; --surface:#16211a; --surface-2:#223027; --ink:#e7efe4; --ink-2:#a3b4a0; --line:#2c3d31;
+  --pitch:#3fb862; --pitch-ink:#07140b; --alert:#ff8a50; --alert-bg:#3a2012; --warn-bg:#35300f; --warn:#f2c14e;
+  --bench:#6fb1e0; --focus:#8ab4f8; --grass:#1f5f3a; --grass-2:#1b5634; --chalk:rgba(255,255,255,.5); --hi:#ff8a50; --lo:#6fb1e0; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 var(--font);
+  padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(32px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
+button,select,input{font:inherit;color:inherit}
+.app{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px}
+h1{font-size:1.2rem;margin:0;letter-spacing:-.01em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h2{font-size:.74rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);margin:0;font-weight:700}
+.hint{margin:0;font-size:.85rem;color:var(--ink-2)}
+.warn{color:var(--warn);font-weight:600}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.sp{justify-content:space-between}
+.two{display:grid;grid-template-columns:2fr 1fr;gap:8px}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface-2);font-weight:650;padding:10px 14px;border-radius:12px;min-height:48px;touch-action:manipulation;cursor:pointer}
+.btn.primary{background:var(--pitch);color:var(--pitch-ink);border-color:transparent}
+.btn.big{min-height:60px;font-size:1.15rem}
+.btn.ghost{background:transparent}
+.btn.danger{background:transparent;color:var(--alert);border-color:var(--alert)}
+.btn.sm{min-height:40px;padding:6px 12px;font-size:.9rem}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,.pl:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper b{min-width:3.4ch;text-align:center;font-variant-numeric:tabular-nums;font-size:1.1rem}
+.stepper .btn{min-width:44px;padding:6px 0}
+.field-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.field-row label{font-weight:600}
+select,input[type=text]{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;max-width:100%}
+input[type=text]{flex:1;min-width:0}
+/* roster */
+.rrow{display:grid;grid-template-columns:44px 1fr auto 40px;align-items:center;gap:8px;min-height:40px;border-top:1px solid var(--line)}
+.rrow:first-of-type{border-top:0}
+.rn{font-weight:600;overflow-wrap:anywhere}
+.rt{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:.9rem}
+.chk{width:34px;height:34px;border-radius:10px;border:2px solid var(--line);background:var(--surface);font-weight:800;color:var(--pitch-ink);touch-action:manipulation}
+.chk.on{background:var(--pitch);border-color:var(--pitch)}
+.x{border:0;background:transparent;color:var(--ink-2);font-size:1.1rem;width:40px;height:36px;border-radius:10px}
+/* players */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pl{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:8px 10px;min-height:58px;min-width:0;touch-action:manipulation;cursor:pointer}
+.pl .n{font-weight:700;overflow-wrap:anywhere;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pl .t{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:.88rem}
+.pl.field{border-left:6px solid var(--pitch)}
+.pl.bench{border-left:6px solid var(--bench)}
+.pl.isout{opacity:.5}
+.pl.out{border-left:6px solid var(--alert)}
+.pl.in{border-left:6px solid var(--pitch)}
+.tag{font-size:.68rem;font-weight:800;letter-spacing:.05em;padding:2px 6px;border-radius:6px;background:var(--surface-2);color:var(--ink)}
+.tag.gk{background:var(--warn-bg);color:var(--warn)}
+.tag.in{background:var(--pitch);color:var(--pitch-ink)}
+.tag.out{background:var(--alert);color:#fff}
+.tag.x{background:var(--ink-2);color:var(--bg)}
+/* clock */
+.clock{align-items:stretch;gap:8px}
+.clock .meta{display:flex;justify-content:space-between;align-items:baseline;gap:8px;color:var(--ink-2);font-size:.8rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.clock .time{font-size:4.2rem;line-height:1;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;text-align:center}
+.clock .of{font-size:.95rem;font-weight:600;color:var(--ink-2)}
+.track{position:relative;height:10px;border-radius:6px;background:var(--surface-2);margin:6px 0}
+.track i{display:block;height:100%;border-radius:6px;background:var(--pitch)}
+.track b{position:absolute;top:-4px;bottom:-4px;width:3px;margin-left:-1px;border-radius:2px;background:var(--ink-2)}
+.next{text-align:center;font-weight:650;font-variant-numeric:tabular-nums}
+.sub{border-width:2px;border-color:var(--warn)}
+.sub.soon{background:var(--warn-bg)}
+.sub.now{background:var(--alert-bg);border-color:var(--alert)}
+@media (prefers-reduced-motion: no-preference){
+  .sub.now{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--alert) 35%,transparent)}}
+}
+.gkline{font-size:1.05rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.swaplabels,.swap{display:grid;grid-template-columns:1fr 28px 1fr;gap:6px;align-items:center}
+.swaplabels{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.swap .arr{text-align:center;font-weight:800;font-size:1.2rem}
+.log{margin:0;padding:0;list-style:none;font-size:.88rem;color:var(--ink-2);display:flex;flex-direction:column;gap:4px}
+.log b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* summary */
+.sum{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}
+.sum .nm{font-weight:650;overflow-wrap:anywhere}
+.sum .v{font-variant-numeric:tabular-nums;font-weight:700}
+.sum .bar{grid-column:1/-1;height:8px;border-radius:5px;background:var(--surface-2);margin-bottom:6px}
+.sum .bar i{display:block;height:100%;border-radius:5px;background:var(--pitch)}
+/* sheet + lock */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;background:var(--surface);border-radius:18px 18px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;max-height:80vh;overflow:auto}
+.sheet h3{margin:0 0 4px;font-size:1.05rem}
+.sheet .btn{text-align:left;display:flex;justify-content:space-between;gap:10px}
+.sheet .btn small{color:var(--ink-2);font-weight:500;font-variant-numeric:tabular-nums}
+.lock{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;touch-action:none;text-align:center}
+.lock .time{font-size:5.6rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.lock .banner{width:100%;max-width:420px;border:2px solid var(--alert);background:var(--alert-bg);border-radius:14px;padding:12px;font-weight:700}
+.hold{position:relative;overflow:hidden;min-width:220px}
+.hold::after{content:"";position:absolute;left:0;top:0;bottom:0;width:0;background:color-mix(in srgb,var(--pitch) 40%,transparent)}
+.hold.holding::after{width:100%;transition:width .7s linear}
+.empty{padding:6px 0;color:var(--ink-2)}
+.grow{flex:1}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.stack{display:flex;flex-direction:column;gap:6px}
+.stack label{font-weight:600}
+.pl{position:relative}
+.pl[data-load].hi::after,.disc.hi::after{content:"";position:absolute;top:8px;right:8px;width:10px;height:10px;border-radius:50%;background:var(--hi)}
+.pl[data-load].lo::after,.disc.lo::after{content:"";position:absolute;top:8px;right:8px;width:10px;height:10px;border-radius:50%;background:var(--lo)}
+.tag.sug{background:var(--pitch);color:var(--pitch-ink)}
+.shead{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin-top:6px}
+/* pitch */
+.pitch{position:relative;width:100%;aspect-ratio:100/104;border-radius:14px;overflow:hidden;background:repeating-linear-gradient(180deg,var(--grass) 0 13%,var(--grass-2) 13% 26%)}
+.pitch .lines{position:absolute;inset:0;width:100%;height:100%}
+.pitch .lines *{fill:none;stroke:var(--chalk);stroke-width:2;vector-effect:non-scaling-stroke}
+.pitch .lines .dot{fill:var(--chalk);stroke:none}
+.disc{position:absolute;transform:translate(-50%,-50%);width:28%;min-height:54px;padding:5px 6px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:0;text-align:center;line-height:1.15;touch-action:manipulation;cursor:pointer;min-width:0;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.disc .dpos{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--ink-2)}
+.disc .dn{font-weight:800;font-size:.95rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc .dt{font-size:.78rem;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.disc .dq{font-size:.72rem;font-weight:800;color:var(--alert);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc.gk{background:var(--warn-bg);border-color:var(--warn)}
+.disc.qd{border-style:dashed;border-color:var(--alert)}
+.disc:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+/* clock bar and queue dock stay on screen while you scroll */
+.clock{position:sticky;top:6px;z-index:6;padding:10px 14px;gap:6px}
+.clock .meta{align-items:center}
+.clock .clrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.clock .time{font-size:3.3rem;text-align:left}
+.clock .clrow .btn{min-width:140px}
+.clock.soon{border-color:var(--warn)}
+.clock.now{border-color:var(--alert)}
+.dock{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:7;background:var(--surface);border:2px solid var(--warn);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.3)}
+.dock.soon{background:var(--warn-bg)}
+.dock.now{background:var(--alert-bg);border-color:var(--alert)}
+@media (prefers-reduced-motion: no-preference){ .dock.now{animation:pulse 1s ease-in-out infinite} }
+.dhead{display:flex;flex-direction:column}
+.dhead span{font-size:.8rem;color:var(--ink-2)}
+.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.qrow .qn{overflow-wrap:anywhere}
+.qrow small{color:var(--ink-2);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+'use strict';
+/* ============ helpers & state ============ */
+const $ = s => document.querySelector(s);
+const KEY = 'sidelineSubs.v1';
+const uid = () => Math.random().toString(36).slice(2, 9);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+const fmtShort = ms => fmt(ms).replace(/^0/, '');
+
+const DEFAULT = () => ({
+  roster: [],                                   // {id, name, here, tot}  tot = tournament ms played
+  cfg: { halfMin: 22, onField: 7, subsPerHalf: 3, swaps: 0, warnSec: 30, formation: '2-3-1' },   // swaps 0 = auto
+  setup: { starters: [], gks: [], edited: false },   // gks = goalie pool in rotation order
+  sound: true,
+  game: null,
+});
+function load() {
+  try {
+    const r = JSON.parse(localStorage.getItem(KEY));
+    if (r && Array.isArray(r.roster)) {
+      const d = DEFAULT(), o = Object.assign(d, r, { cfg: Object.assign(d.cfg, r.cfg), setup: Object.assign(d.setup, r.setup) });
+      if (o.game) { const g = o.game; g.queue = g.queue || []; g.gkNext = g.gkNext || ''; g.alert = ''; g.formation = g.formation || '2-3-1'; delete g.pending; }
+      return o;
+    }
+  } catch (e) {}
+  return DEFAULT();
+}
+let S = load();
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const ui = { addText: '', sheet: null, locked: false, confirm: null };
+
+const R = id => S.roster.find(p => p.id === id);
+const nm = id => (R(id) || {}).name || '?';
+const ridx = id => S.roster.findIndex(p => p.id === id);
+
+// Formations as [label, x%, y%] per slot. Slot 0 is always the goalkeeper. Attack is at the top of the pitch.
+const FORMATIONS = {
+  '2-3-1': [['GK', 50, 89], ['LD', 29, 67], ['RD', 71, 67], ['LM', 16, 41], ['CM', 50, 45], ['RM', 84, 41], ['ST', 50, 15]],
+  '3-2-1': [['GK', 50, 89], ['LD', 16, 67], ['CD', 50, 71], ['RD', 84, 67], ['LM', 29, 42], ['RM', 71, 42], ['ST', 50, 15]],
+  '2-2-2': [['GK', 50, 89], ['LD', 29, 67], ['RD', 71, 67], ['LM', 29, 42], ['RM', 71, 42], ['LS', 29, 15], ['RS', 71, 15]],
+  '1-3-2': [['GK', 50, 89], ['CD', 50, 69], ['LM', 16, 43], ['CM', 50, 47], ['RM', 84, 43], ['LS', 29, 15], ['RS', 71, 15]],
+};
+
+/* ============ clock & play time ============ */
+// Half clock = time in the current half. Game clock (gm) never resets, so play time survives halftime.
+function clockMs(g = S.game) { return g.baseMs + (g.status === 'running' ? Date.now() - g.startedAt : 0); }
+function gameMs(g = S.game) { return g.prevMs + clockMs(g); }
+function gameMsAt(g, t) { return g.prevMs + g.baseMs + (g.status === 'running' ? Math.max(0, t - g.startedAt) : 0); }
+function playedMs(id, g = S.game, gm = gameMs(g)) { const p = g.p[id]; return p.played + (p.onSince != null ? gm - p.onSince : 0); }
+const halfMs = () => S.cfg.halfMin * 60000;
+const segMs = () => halfMs() / (S.cfg.subsPerHalf + 1);
+const warnMs = () => Math.min(S.cfg.warnSec * 1000, segMs() / 2);
+
+/* ============ sub algorithm ============ */
+// Fairness rule: whoever has played the least comes on, whoever has played the most goes off.
+// Ties go to the kid who has waited longest on the bench / been on the field longest.
+// Ranking uses minutes in THIS game only, so a kid who missed an earlier game isn't forced to play the whole next one.
+// Goalies rotate through the pool in order. The changes land on evenly spaced sub windows
+// (window numbers count through the game: 1..subs, halftime = subs+1, then subs+2..).
+function gkWindows(poolLen, subs) {
+  const W = 2 * subs + 1, out = [];
+  for (let i = 1; i < poolLen; i++) out.push(Math.round(i * (W + 1) / poolLen));
+  return out;
+}
+function nextGk(g) {
+  const full = g.gkPool || [], i = full.indexOf(g.gk);
+  for (let st = 1; st <= full.length; st++) {
+    const id = full[(i + st + full.length) % full.length];
+    if (id !== g.gk && g.p[id] && !g.p[id].out) return id;
+  }
+  return '';
+}
+// A keeper who still owes a long stint in goal counts as having "already played" part of it, so he is rested
+// before his turn instead of arriving with too many minutes. Only matters when a stint is over half the fair share.
+function gkReserve(g, gm) {
+  const pool = g.gkPool || [], at = g.gkAt || [];
+  if (pool.length < 2) return () => 0;
+  const H = halfMs(), seg = H / (g.subs + 1);
+  const wt = w => w <= g.subs ? w * seg : w === g.subs + 1 ? H : H + (w - g.subs - 1) * seg;
+  const T = g.field.length * 2 * H / (g.field.length + g.bench.filter(id => !g.p[id].out).length);
+  const res = {}, cur = at.filter(w => wt(w) <= gm + 1).length;
+  for (let j = cur + 1; j < pool.length; j++) {
+    const len = (j < at.length ? wt(at[j]) : 2 * H) - Math.max(gm, wt(at[j - 1]));
+    res[pool[j]] = Math.max(0, 2 * len - T);
+  }
+  return id => res[id] || 0;
+}
+function suggest(g, opt = {}) {
+  const gm = gameMs(g), reserve = gkReserve(g, gm), pl = id => playedMs(id, g, gm) + reserve(id);
+  const newGk = opt.w && (g.gkAt || []).includes(opt.w) ? nextGk(g) : '';
+  const prot = new Set([newGk || g.gk].filter(Boolean));       // the keeper in goal is never taken off
+  const avail = g.bench.filter(id => !g.p[id].out);
+  const on = newGk && avail.includes(newGk) ? [newGk] : [];     // an incoming keeper on the bench has to come on
+  const rest = avail.filter(id => !on.includes(id))
+    .sort((a, b) => pl(a) - pl(b) || g.p[a].benchSince - g.p[b].benchSince || ridx(a) - ridx(b));
+  const k = Math.min(g.k || 1, avail.length);
+  while (on.length < k && rest.length) on.push(rest.shift());
+  const cand = g.field.filter(id => !prot.has(id))
+    .sort((a, b) => pl(b) - pl(a) || g.p[a].onSince - g.p[b].onSince || ridx(a) - ridx(b));
+  const n = Math.min(on.length, cand.length);
+  return { off: cand.slice(0, n), on: on.slice(0, n), gk: newGk };
+}
+function runWindow(g, w) {
+  const s = suggest(g, { w }), gm = gameMs(g);
+  s.off.forEach((o, i) => applySwap(g, o, s.on[i], gm));
+  if (s.gk) g.gk = s.gk;
+  return s;
+}
+// How many kids swap per window. "Auto" (swaps = 0) simulates the whole game and keeps the count with the smallest gap.
+function planGap(k, subs, starters, ids, pool) {
+  const H = halfMs(), seg = H / (subs + 1), gp = pool.filter(id => ids.includes(id));
+  const g = { period: 1, status: 'paused', baseMs: 0, prevMs: 0, k, subs, p: {}, field: [...starters],
+    bench: ids.filter(id => !starters.includes(id)), gkPool: gp, gkAt: gkWindows(gp.length, subs), gk: starters.includes(gp[0]) ? gp[0] : '' };
+  ids.forEach(id => { g.p[id] = { played: 0, onSince: starters.includes(id) ? 0 : null, benchSince: 0, out: false }; });
+  const half = base => { for (let w = 1; w <= subs; w++) { g.baseMs = w * seg; runWindow(g, base + w); } };
+  half(0);
+  g.baseMs = 0; g.prevMs = H; g.period = 2; runWindow(g, subs + 1); half(subs + 1);
+  g.baseMs = H; const gm = gameMs(g), v = ids.map(id => playedMs(id, g, gm));
+  return Math.max(...v) - Math.min(...v);
+}
+function bestSwaps(subs) {
+  const ids = S.roster.filter(r => r.here).map(r => r.id), st = S.setup.starters.filter(id => ids.includes(id));
+  const bench = ids.length - S.cfg.onField;
+  if (bench <= 0 || st.length !== S.cfg.onField) return { k: Math.max(1, Math.min(3, bench)), gap: 0 };
+  let best = null;
+  for (let k = 1; k <= bench; k++) {
+    const gap = planGap(k, subs, st, ids, S.setup.gks), key = [Math.round(gap / 5000), Math.abs(k - 3), k];
+    if (!best || key[0] < best.key[0] || (key[0] === best.key[0] && (key[1] < best.key[1] || (key[1] === best.key[1] && key[2] < best.key[2])))) best = { k, gap, key };
+  }
+  return best;
+}
+function plan() {
+  const ids = S.roster.filter(r => r.here).map(r => r.id), st = S.setup.starters.filter(id => ids.includes(id));
+  const bench = Math.max(0, ids.length - S.cfg.onField);
+  if (!bench || st.length !== S.cfg.onField) return { k: 0, gap: 0 };
+  if (S.cfg.swaps) { const k = Math.min(S.cfg.swaps, bench); return { k, gap: planGap(k, S.cfg.subsPerHalf, st, ids, S.setup.gks) }; }
+  return bestSwaps(S.cfg.subsPerHalf);
+}
+function applySwap(g, offId, onId, gm) {
+  const po = g.p[offId], pn = g.p[onId];
+  po.played += gm - po.onSince; po.onSince = null; po.benchSince = gm;
+  pn.onSince = gm;
+  g.field[g.field.indexOf(offId)] = onId;
+  g.bench[g.bench.indexOf(onId)] = offId;
+  if (g.gk === offId) g.gk = onId;
+}
+function pushHistory(g) {
+  g.hist.push(JSON.stringify({ p: g.p, field: g.field, bench: g.bench, gk: g.gk, gkNext: g.gkNext, ht: g.ht, log: g.log }));
+  if (g.hist.length > 10) g.hist.shift();
+}
+function logSwap(g, offs, ons, gm, label, gk) {
+  const half = g.period === 1 ? '1st' : '2nd';
+  const c = gm - g.prevMs;
+  g.log.unshift({ at: label || half + ' ' + fmtShort(c), text: (offs.length ? offs.map(nm).join(', ') + ' → ' + ons.map(nm).join(', ') : '') + (gk ? (offs.length ? ' · ' : '') + 'GK: ' + nm(gk) : '') });
+  g.log = g.log.slice(0, 12);
+}
+/* Subs are queued first ("waiting at the half line") and only take effect when you tap On, i.e. when the ref waves them on. */
+function cleanQueue(g) {
+  const offs = new Set(), ons = new Set();
+  g.queue = (g.queue || []).filter(q => {
+    const ok = g.field.includes(q.off) && g.bench.includes(q.on) && !g.p[q.on].out && !offs.has(q.off) && !ons.has(q.on);
+    if (ok) { offs.add(q.off); ons.add(q.on); }
+    return ok;
+  });
+  if (g.gkNext && (g.gkNext === g.gk || !g.p[g.gkNext] || g.p[g.gkNext].out)) g.gkNext = '';
+  if (!g.queue.length && !g.gkNext) g.alert = '';
+  return g.queue;
+}
+function syncGk(g) {                      // the keeper always stands in slot 0
+  if (!g.gk || g.field[0] === g.gk) return;
+  const i = g.field.indexOf(g.gk);
+  if (i > 0) [g.field[0], g.field[i]] = [g.field[i], g.field[0]];
+}
+function handoffGk(g) {
+  if (!g.gkNext || !g.field.includes(g.gkNext)) return;
+  g.gk = g.gkNext; g.gkNext = ''; syncGk(g);
+}
+function queueAdd(g, off, on, auto) {
+  g.queue = g.queue.filter(q => q.off !== off && q.on !== on);
+  g.queue.push({ off, on, auto: !!auto });
+}
+function swapPositions(g, a, b) {
+  const i = g.field.indexOf(a), j = g.field.indexOf(b); if (i < 0 || j < 0) return;
+  [g.field[i], g.field[j]] = [g.field[j], g.field[i]];
+  if (g.gk && (g.gk === a || g.gk === b)) g.gk = g.field[0];
+}
+const slotsOf = g => FORMATIONS[g.formation] || FORMATIONS['2-3-1'];
+const posOf = (g, id) => { const i = g.field.indexOf(id), F = slotsOf(g); return i >= 0 && F[i] ? F[i][0] : ''; };
+// Rankings for the pickers: bench by least played, field by most played (keeper last). Queued kids are left out.
+function rankLists(g) {
+  const gm = gameMs(g), res = gkReserve(g, gm), pl = id => playedMs(id, g, gm) + res(id);
+  const qOff = new Set(g.queue.map(q => q.off)), qOn = new Set(g.queue.map(q => q.on));
+  const ons = g.bench.filter(id => !g.p[id].out && !qOn.has(id))
+    .sort((a, b) => pl(a) - pl(b) || g.p[a].benchSince - g.p[b].benchSince || ridx(a) - ridx(b));
+  const offs = g.field.filter(id => !qOff.has(id))
+    .sort((a, b) => (a === g.gk) - (b === g.gk) || pl(b) - pl(a) || g.p[a].onSince - g.p[b].onSince || ridx(a) - ridx(b));
+  return { ons, offs, pl };
+}
+function suggestPairs(g, n) {
+  const { ons, offs, pl } = rankLists(g), out = [];
+  for (let i = 0; i < Math.min(n, ons.length, offs.length); i++) {
+    if (offs[i] === g.gk) break;
+    if (pl(offs[i]) - pl(ons[i]) >= 60000) out.push([offs[i], ons[i]]);
+  }
+  return out;
+}
+
+/* ============ game flow ============ */
+function startGame() {
+  const present = S.roster.filter(r => r.here).map(r => r.id);
+  const starters = S.setup.starters.filter(id => present.includes(id));
+  if (starters.length !== S.cfg.onField) return;
+  const pool = S.setup.gks.filter(id => present.includes(id));
+  const gk1 = starters.includes(pool[0]) ? pool[0] : '';
+  const field = gk1 ? [gk1, ...starters.filter(id => id !== gk1)] : [...starters];
+  const g = {
+    period: 1, status: 'ready', baseMs: 0, startedAt: null, prevMs: 0, evIdx: 0, halfAlerted: false,
+    p: {}, field, bench: present.filter(id => !starters.includes(id)),
+    gk: gk1, gkPool: pool, gkAt: gkWindows(pool.length, S.cfg.subsPerHalf), subs: S.cfg.subsPerHalf, k: Math.max(1, plan().k),
+    formation: S.cfg.formation, queue: [], gkNext: '', alert: '', alertK: 0, hist: [], log: [], ht: null, saved: false,
+  };
+  present.forEach(id => { g.p[id] = { played: 0, onSince: starters.includes(id) ? 0 : null, benchSince: 0, out: false }; });
+  S.game = g; ui.locked = false;
+  save(); wake(); render();
+  notify('Ready for kickoff', 'Tap “Kick off” when the whistle blows.', { tag: 'game', actions: [{ action: 'kickoff', title: 'Kick off' }] });
+}
+function startClock(t = Date.now()) {
+  const g = S.game; if (!g || (g.status !== 'ready' && g.status !== 'paused')) return;
+  g.startedAt = Math.min(t, Date.now()); g.status = 'running';
+  audio(); wake(); closeNotif('game'); save(); render();
+}
+function stopClock(g, t = Date.now()) { if (g.status === 'running') { g.baseMs += Math.max(0, t - g.startedAt); g.startedAt = null; } }
+function pauseClock() { const g = S.game; if (g.status !== 'running') return; stopClock(g); g.status = 'paused'; save(); render(); }
+function endHalf(t = Date.now()) {
+  const g = S.game; if (!g || g.status === 'final' || g.status === 'ready') return;
+  stopClock(g, t); g.status = 'paused'; g.prevMs += g.baseMs; g.baseMs = 0; g.startedAt = null; g.queue = []; g.gkNext = ''; g.alert = ''; g.hist = [];
+  closeNotif('subs'); closeNotif('half');
+  if (g.period === 1) {
+    g.period = 2; g.status = 'ready'; g.evIdx = 0; g.halfAlerted = false;
+    halftimeLineup(g);
+    notify('Halftime', 'Second-half lineup is set. Start when the teams are back out.', { tag: 'game', actions: [{ action: 'start2', title: 'Start 2nd half' }] });
+  } else finishGame(g);
+  save(); render();
+}
+function halftimeLineup(g) {
+  const gm = gameMs(g), s = suggest(g, { w: S.cfg.subsPerHalf + 1 });
+  s.off.forEach((o, i) => applySwap(g, o, s.on[i], gm));
+  if (s.gk) g.gk = s.gk;
+  syncGk(g);
+  if ((s.off.length || s.gk) && g.log) logSwap(g, s.off, s.on, gm, 'Half', s.gk);
+  g.ht = { off: s.off, on: s.on, gk: s.gk };
+}
+function finishGame(g) {
+  const gm = gameMs(g);
+  g.field.forEach(id => { const p = g.p[id]; p.played += gm - p.onSince; p.onSince = null; });
+  g.status = 'final'; g.queue = []; g.gkNext = ''; g.alert = '';
+  if (!g.saved) { S.games = (S.games || 0) + 1; Object.keys(g.p).forEach(id => { const r = R(id); if (r) r.tot += g.p[id].played; }); g.saved = true; }
+  releaseWake();
+}
+// Tap On when the ref lets the subs on: this is the moment play time stops for the kid coming off and starts for the kid going on.
+function goOn(which, t = Date.now()) {
+  const g = S.game; if (!g || g.status === 'final') return;
+  cleanQueue(g);
+  const items = which === 'all' ? [...g.queue] : which === 'gk' ? [] : [g.queue[+which]].filter(Boolean);
+  const canGk = (which === 'all' || which === 'gk') && g.gkNext;
+  if (!items.length && !(canGk && g.field.includes(g.gkNext))) return;
+  const gm = gameMsAt(g, t), gk0 = g.gk;
+  pushHistory(g);
+  items.forEach(q => { applySwap(g, q.off, q.on, gm); if (g.gkNext === q.on) handoffGk(g); });
+  if (canGk && g.gkNext && g.field.includes(g.gkNext)) handoffGk(g);
+  g.queue = g.queue.filter(q => !items.includes(q));
+  logSwap(g, items.map(q => q.off), items.map(q => q.on), gm, '', g.gk !== gk0 ? g.gk : '');
+  g.ht = null; cleanQueue(g);
+  if (!g.queue.length && !g.gkNext) closeNotif('subs');
+  save(); render();
+}
+function directSwap(offId, onId) {            // before kickoff and at halftime the clock is stopped, so swap right away
+  const g = S.game, gm = gameMs(g), gk0 = g.gk;
+  pushHistory(g); applySwap(g, offId, onId, gm);
+  if (g.gkNext === onId) handoffGk(g);
+  logSwap(g, [offId], [onId], gm, '', g.gk !== gk0 ? g.gk : ''); g.ht = null;
+}
+function undo() {
+  const g = S.game; const h = g.hist.pop(); if (!h) return;
+  Object.assign(g, JSON.parse(h)); cleanQueue(g); save(); render();
+}
+
+/* ============ timer events ============ */
+function tick() {
+  const g = S.game;
+  if (g && g.status === 'running') {
+    const c = clockMs(g), n = S.cfg.subsPerHalf, seg = segMs(), warn = warnMs();
+    let fired = null;
+    while (g.evIdx < 2 * n) {
+      const k = Math.floor(g.evIdx / 2) + 1, stage = g.evIdx % 2 ? 'now' : 'soon';
+      if (c >= k * seg - (stage === 'soon' ? warn : 0)) { g.evIdx++; fired = { k, stage }; } else break;
+    }
+    if (fired) onWindow(g, fired);
+    if (!g.halfAlerted && c >= halfMs()) {
+      g.halfAlerted = true; save(); render();
+      const first = g.period === 1;
+      signal('half', 'Time! End of the ' + (first ? '1st' : '2nd') + ' half', 'Tap End half when the ref blows the whistle.', { tag: 'half', actions: [{ action: first ? 'endhalf' : 'endhalf', title: first ? 'End half' : 'End game' }] });
+    }
+  }
+  updateTexts();
+}
+function onWindow(g, { k, stage }) {
+  const w = g.period === 1 ? k : S.cfg.subsPerHalf + 1 + k;
+  const s = suggest(g, { w });
+  if (!s.off.length && !s.gk) return;
+  g.queue = g.queue.filter(q => !q.auto);                       // drop an old unused suggestion, keep what you queued yourself
+  if (!g.queue.length) s.off.forEach((o, i) => queueAdd(g, o, s.on[i], true));
+  if (s.gk) g.gkNext = s.gk;
+  g.alert = stage; g.alertK = k;
+  cleanQueue(g);
+  if (!g.queue.length && !g.gkNext) return;
+  save(); render();
+  const act = { tag: 'subs', actions: [{ action: 'done', title: 'Subs on' }] };
+  if (stage === 'soon') signal('soon', 'Sub in ' + Math.round(warnMs() / 1000) + ' seconds', queueText(g), act);
+  else signal('now', 'SUB TIME', queueText(g), act);
+}
+function queueText(g) {
+  const lines = g.queue.map(q => nm(q.off) + ' → ' + nm(q.on));
+  if (g.gkNext) lines.push('GOALIE: ' + nm(g.gkNext));
+  return lines.join('\n');
+}
+let lastSugg = 0;
+function updateTexts() {
+  const g = S.game; if (!g) return;
+  const c = clockMs(g), per = halfMs(), gm = gameMs(g);
+  const set = (id, v) => { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v; };
+  set('clk', fmt(c)); set('clk2', fmt(c));
+  const bar = document.getElementById('bar'); if (bar) bar.style.width = Math.min(100, c / per * 100) + '%';
+  let nx;
+  const hasBench = g.bench.some(id => !g.p[id].out);
+  if (g.status === 'final') nx = '';
+  else if (!hasBench) nx = 'Nobody on the bench, no subs needed';
+  else if (g.status === 'ready') nx = g.period === 1 ? 'First sub at ' + fmtShort(segMs()) : 'Lineup set for the 2nd half';
+  else if (g.alert === 'now') nx = 'Sub time';
+  else {
+    const n = S.cfg.subsPerHalf; let w = null;
+    for (let k = 1; k <= n; k++) if (k * segMs() > c + 500) { w = k * segMs(); break; }
+    if (g.alert === 'soon') nx = 'Sub at ' + fmtShort(g.alertK * segMs()) + ' · in ' + fmtShort(g.alertK * segMs() - c);
+    else if (w != null) nx = 'Next sub at ' + fmtShort(w) + ' · in ' + fmtShort(w - c);
+    else nx = c < per ? 'No more subs this half · ' + fmtShort(per - c) + ' left' : 'Time is up. End the half when the ref says so.';
+  }
+  set('next', nx); set('next2', nx);
+  document.querySelectorAll('[data-played]').forEach(el => { const v = fmt(playedMs(el.dataset.played, g, gm)); if (el.textContent !== v) el.textContent = v; });
+  // colour dot: has this kid played more (orange) or less (blue) than the team average?
+  const ids = Object.keys(g.p).filter(id => !g.p[id].out);
+  const avg = ids.reduce((a, id) => a + playedMs(id, g, gm), 0) / Math.max(1, ids.length);
+  document.querySelectorAll('[data-load]').forEach(el => {
+    const d = playedMs(el.dataset.load, g, gm) - avg, cl = d > 90000 ? 'hi' : d < -90000 ? 'lo' : '';
+    if (el.dataset.lc !== cl) { el.dataset.lc = cl; el.classList.remove('hi', 'lo'); if (cl) el.classList.add(cl); }
+  });
+  if (g.status === 'running' && !ui.sheet && Date.now() - lastSugg > 20000) {
+    lastSugg = Date.now(); const el = document.getElementById('sugg'); if (el) el.innerHTML = suggestInner(g);
+  }
+}
+
+/* ============ alerts: vibration, beeps, notifications (mirror to the watch) ============ */
+let actx = null;
+function audio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
+  return actx;
+}
+function beep(kind) {
+  if (!S.sound) return; const c = audio(); if (!c) return;
+  const seq = kind === 'now' ? [[880, 0], [880, .28], [1175, .56]] : kind === 'soon' ? [[660, 0], [660, .25]] : [[523, 0], [523, .35], [523, .7], [784, 1.05]];
+  seq.forEach(([f, t]) => {
+    const o = c.createOscillator(), gn = c.createGain(), s = c.currentTime + t;
+    o.type = 'sine'; o.frequency.value = f;
+    gn.gain.setValueAtTime(0.0001, s); gn.gain.exponentialRampToValueAtTime(0.5, s + 0.02); gn.gain.exponentialRampToValueAtTime(0.0001, s + 0.22);
+    o.connect(gn); gn.connect(c.destination); o.start(s); o.stop(s + 0.25);
+  });
+}
+function signal(kind, title, body, opt) {
+  const pat = kind === 'now' ? [500, 200, 500, 200, 500] : kind === 'soon' ? [250, 150, 250] : [900, 250, 900];
+  try { if (navigator.vibrate) navigator.vibrate(pat); } catch (e) {}
+  beep(kind);
+  notify(title, body, Object.assign({ vibrate: pat }, opt));
+}
+const notifOK = () => 'Notification' in window && Notification.permission === 'granted';
+async function notify(title, body, opt = {}) {
+  if (!notifOK()) return;
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    const o = { body, tag: opt.tag || 'subs', renotify: true, requireInteraction: true, vibrate: opt.vibrate || [300, 150, 300], icon: 'icon-192.png', badge: 'icon-192.png', actions: opt.actions || [] };
+    if (reg && reg.active) await reg.showNotification(title, o); else new Notification(title, { body, tag: o.tag });
+  } catch (e) {}
+}
+async function closeNotif(tag) {
+  try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) (await reg.getNotifications({ tag })).forEach(n => n.close()); } catch (e) {}
+}
+async function enableAlerts() {
+  audio();
+  try { if ('Notification' in window) await Notification.requestPermission(); } catch (e) {}
+  render();
+}
+function testAlert() {
+  signal('now', 'TEST: SUB NOW', 'OUT: Sam, Max\nIN: Eli, Noah\nThis is what your watch will show.', { tag: 'test', actions: [{ action: 'test', title: 'Got it' }] });
+}
+/* Actions tapped on a notification (including on the watch) arrive from the service worker with the tap time. */
+function handleAction(action, t) {
+  const g = S.game; if (!g) return;
+  if (action === 'kickoff' && g.period === 1 && g.status === 'ready') startClock(t);
+  else if (action === 'start2' && g.period === 2 && g.status === 'ready') startClock(t);
+  else if (action === 'done' && (g.queue.length || g.gkNext)) goOn('all', t || Date.now());
+  else if (action === 'endhalf' && g.status === 'running' && clockMs(g) > halfMs() * 0.8) endHalf(t || Date.now());
+}
+
+let wl = null;
+async function wake() {
+  try { if (S.game && S.game.status !== 'final' && !wl && navigator.wakeLock && !document.hidden) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); } } catch (e) {}
+}
+function releaseWake() { try { if (wl) wl.release(); } catch (e) {} wl = null; }
+
+/* ============ setup ============ */
+function fixStarters() {
+  const pres = S.roster.filter(r => r.here), ids = pres.map(r => r.id), s = S.setup;
+  s.gks = (s.gks || []).filter(id => ids.includes(id));
+  s.starters = s.starters.filter(id => ids.includes(id));
+  if (!s.edited) autoStarters();
+}
+function autoStarters() {
+  const pres = S.roster.filter(r => r.here), s = S.setup, n = S.cfg.onField;
+  const late = r => (s.gks.indexOf(r.id) > 0 && pres.length > n) ? 1 : 0;   // goalies after the first start on the bench if there is room
+  let ids = [...pres].sort((a, b) => late(a) - late(b) || a.tot - b.tot || ridx(a.id) - ridx(b.id)).slice(0, n).map(r => r.id);
+  const g1 = s.gks[0];
+  if (g1 && !ids.includes(g1)) ids = [...ids.slice(0, Math.max(0, n - 1)), g1];   // first goalie always starts
+  s.starters = ids;
+}
+function addPlayers(text) {
+  text.split(/[\n,;]+/).map(t => t.trim()).filter(Boolean).forEach(name => S.roster.push({ id: uid(), name, here: true, tot: 0 }));
+}
+const SAMPLE = ['Liam', 'Noah', 'Mason', 'Ethan', 'Lucas', 'Jack', 'Owen', 'Eli', 'Max', 'Sam'];
+
+/* ============ views ============ */
+function stepper(key, label, val, d, suffix) {
+  return `<div class="field-row"><label>${label}</label><div class="stepper"><button class="btn" data-act="cfg" data-k="${key}" data-d="${-d}" aria-label="Less">−</button><b>${val}${suffix || ''}</b><button class="btn" data-act="cfg" data-k="${key}" data-d="${d}" aria-label="More">+</button></div></div>`;
+}
+function setupView() {
+  fixStarters();
+  const c = S.cfg, pres = S.roster.filter(r => r.here), n = pres.length, on = c.onField, bench = Math.max(0, n - on);
+  const pl = plan(), swaps = pl.k, seg = segMs(), st0 = S.setup.starters;
+  let tip = null;
+  if (bench && swaps && st0.length === on) {
+    for (let sb = 2; sb <= 6; sb++) {
+      if (sb === c.subsPerHalf) continue;
+      const gap = c.swaps ? planGap(Math.min(c.swaps, bench), sb, st0, pres.map(r => r.id), S.setup.gks) : bestSwaps(sb).gap;
+      if (gap < pl.gap - 30000 && (!tip || gap < tip.gap - 1000)) tip = { sb, gap };
+    }
+  }
+  const target = n ? on * c.halfMin * 2 * 60000 / n : 0;
+  const times = Array.from({ length: c.subsPerHalf }, (_, i) => fmtShort((i + 1) * seg)).join(', ');
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  const st = S.setup.starters, ok = n >= on && st.length === on;
+  let msg = '';
+  if (n < on) msg = `You need at least ${on} players marked here.`;
+  else if (st.length !== on) msg = `Pick ${on} starters (${st.length} picked).`;
+  const pool = S.setup.gks, at = gkWindows(pool.length, c.subsPerHalf);
+  const wlabel = w => w <= c.subsPerHalf ? fmtShort(w * seg) + ' of the 1st half' : w === c.subsPerHalf + 1 ? 'halftime' : fmtShort((w - c.subsPerHalf - 1) * seg) + ' of the 2nd half';
+  const gkText = !pool.length ? 'No goalie picked, so the app will not track who is in goal.'
+    : pool.length === 1 ? nm(pool[0]) + ' stays in goal all game.'
+    : nm(pool[0]) + ' starts in goal' + at.map((w, i) => ', then ' + nm(pool[i + 1]) + ' at ' + wlabel(w)).join('') + '.';
+  return `
+  <div class="top"><h1>Sideline Subs</h1><span class="hint">${n} here · ${bench} on bench</span></div>
+
+  <section class="card"><h2>Roster</h2>
+    ${S.roster.length ? S.roster.map(r => `<div class="rrow"><button class="chk${r.here ? ' on' : ''}" data-act="here" data-id="${r.id}" aria-label="${esc(r.name)} is here">${r.here ? '✓' : ''}</button><span class="rn">${esc(r.name)}</span><span class="rt">${r.tot ? fmtShort(r.tot) + ' played' : ''}</span><button class="x" data-act="del" data-id="${r.id}" aria-label="Remove ${esc(r.name)}">✕</button></div>`).join('')
+      : `<p class="empty">Add your players below. Names can be separated by commas or new lines.</p>`}
+    <div class="row"><input type="text" id="addText" placeholder="Add names (Sam, Max, Eli)" value="${esc(ui.addText)}" autocomplete="off"><button class="btn" data-act="add">Add</button></div>
+    ${S.roster.length ? '' : `<button class="btn ghost sm" data-act="sample">Load a sample team of 10</button>`}
+    <p class="hint">Untick a kid who is not here today. “Played” is their running total across the tournament.</p>
+  </section>
+
+  <section class="card"><h2>Game</h2>
+    ${stepper('halfMin', 'Half length', c.halfMin, 1, ' min')}
+    ${stepper('subsPerHalf', 'Sub windows per half', c.subsPerHalf, 1)}
+    <div class="field-row"><label>Kids swapped each time</label><div class="stepper"><button class="btn" data-act="cfg" data-k="swaps" data-d="-1" aria-label="Less">−</button><b style="min-width:5.5ch;white-space:nowrap">${c.swaps ? c.swaps : 'Auto (' + swaps + ')'}</b><button class="btn" data-act="cfg" data-k="swaps" data-d="1" aria-label="More">+</button></div></div>
+    <div class="stack"><label>Formation</label><div class="seg">${Object.keys(FORMATIONS).map(f => `<button class="btn sm${c.formation === f ? ' primary' : ''}" data-act="formation" data-v="${f}">${f}</button>`).join('')}</div></div>
+    <p class="hint">Defenders-midfielders-forwards, plus the goalie. You can switch positions on the game screen.</p>
+    <p class="hint">${n >= on && bench ? `Subs at ${times} and at halftime, ${swaps} kid${swaps === 1 ? '' : 's'} each time. Everyone should land near ${fmtShort(target)} of ${fmtShort(c.halfMin * 2 * 60000)}; the most and least played should end up about ${fmtShort(pl.gap)} apart.` : 'No subs needed with this many players.'}</p>
+    ${tip ? `<button class="btn sm" data-act="setsubs" data-v="${tip.sb}">Try ${tip.sb} windows per half (${fmtShort(tip.gap)} apart)</button>` : ''}
+  </section>
+
+  <section class="card"><h2>Starting lineup</h2>
+    <p class="hint"><b>Goalies</b>: tap each kid who will play in goal, in the order they go. They take turns.</p>
+    <div class="grid">${pres.map(r => { const i = S.setup.gks.indexOf(r.id); return `<button class="pl ${i >= 0 ? 'field' : 'bench'}" data-act="gk" data-id="${r.id}"><span class="n">${esc(r.name)}${i >= 0 ? ' <span class="tag gk">GK</span>' : ''}</span><span class="t">${i >= 0 ? (i === 0 ? 'Starts in goal' : 'Goalie #' + (i + 1)) : 'Not a goalie'}</span></button>`; }).join('')}</div>
+    <p class="hint">${gkText}</p>
+    <p class="hint"><b>Starters</b>: tap to start or sit.</p>
+    <div class="grid">${pres.map(r => { const s = st.includes(r.id); return `<button class="pl ${s ? 'field' : 'bench'}" data-act="starter" data-id="${r.id}"><span class="n">${esc(r.name)}${S.setup.gks[0] === r.id ? ' <span class="tag gk">GK</span>' : ''}</span><span class="t">${s ? 'Starts' : 'Bench'}</span></button>`; }).join('') || '<p class="empty">Nobody marked here yet.</p>'}</div>
+    <button class="btn ghost sm" data-act="auto">Auto-pick starters (least played first)</button>
+    ${msg ? `<p class="hint warn">${msg}</p>` : ''}
+    <button class="btn primary big" data-act="start" ${ok ? '' : 'disabled'}>Go to game screen</button>
+  </section>
+
+  <section class="card"><h2>Alerts</h2>
+    <p class="hint">${perm === 'granted' ? 'Notifications are on. They show on your Pixel Watch while the app is open.' : perm === 'denied' ? 'Notifications are blocked. Allow them in Chrome site settings.' : perm === 'unsupported' ? 'Notifications are not available here. Vibration and sound still work.' : 'Turn on notifications so sub alerts reach your watch.'}</p>
+    <div class="row">${perm === 'default' ? '<button class="btn primary" data-act="alerts">Enable notifications</button>' : ''}<button class="btn" data-act="test">Test alert</button><button class="btn ghost" data-act="sound">Sound: ${S.sound ? 'on' : 'off'}</button></div>
+  </section>
+
+  ${S.roster.some(r => r.tot) ? `<button class="btn danger sm" data-act="resettot">${ui.confirm === 'resettot' ? 'Tap again to clear totals' : 'Reset tournament totals'}</button>` : ''}`;
+}
+
+function chip(g, id) {            // bench player
+  const p = g.p[id], tags = [];
+  if (g.gkNext === id) tags.push('<span class="tag gk">GK next</span>');
+  if (g.ht && g.ht.off.includes(id)) tags.push('<span class="tag out">OFF</span>');
+  if (g.queue.some(q => q.on === id)) tags.push('<span class="tag in">At half line</span>');
+  if (p.out) tags.push('<span class="tag x">OUT</span>');
+  return `<button class="pl bench${p.out ? ' isout' : ''}" data-act="player" data-id="${id}" data-load="${id}"><span class="n">${esc(nm(id))} ${tags.join('')}</span><span class="t"><span data-played="${id}">${fmt(playedMs(id, g))}</span> played</span></button>`;
+}
+const PITCH_LINES = `<svg class="lines" viewBox="0 0 100 104" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="2" width="96" height="100"/><path d="M36 2A14 14 0 0 0 64 2"/><rect x="22" y="80" width="56" height="22"/><rect x="38" y="93" width="24" height="9"/><path d="M41 80A9 9 0 0 1 59 80"/><circle cx="50" cy="88" r=".8" class="dot"/></svg>`;
+function pitchView(g) {
+  const F = slotsOf(g);
+  const discs = g.field.map((id, i) => {
+    const [pos, x, y] = F[i] || ['', 50, 50], q = g.queue.find(z => z.off === id);
+    const cls = ['disc', g.gk === id ? 'gk' : '', q ? 'qd' : ''].join(' ');
+    return `<button class="${cls}" style="left:${x}%;top:${y}%" data-act="player" data-id="${id}" data-load="${id}">
+      <span class="dpos">${pos}${g.ht && g.ht.on.includes(id) ? ' · IN' : ''}</span><span class="dn">${esc(nm(id))}</span>
+      <span class="dt"><span data-played="${id}">${fmt(playedMs(id, g))}</span></span>${q ? `<span class="dq">→ ${esc(nm(q.on))}</span>` : ''}</button>`;
+  }).join('');
+  return `<div class="pitch">${PITCH_LINES}${discs}</div>`;
+}
+function suggestInner(g) {
+  const pairs = suggestPairs(g, 3);
+  return `<h2>Who is due</h2>` + (pairs.length
+    ? pairs.map(([o, n]) => `<div class="qrow"><span class="qn"><b>${esc(nm(o))}</b> <small data-played="${o}"></small> → <b>${esc(nm(n))}</b> <small data-played="${n}"></small></span><button class="btn sm" data-act="sq" data-off="${o}" data-on="${n}">Queue</button></div>`).join('')
+      + (pairs.length > 1 ? `<button class="btn sm" data-act="sqall">Queue all ${pairs.length}</button>` : '')
+      + `<p class="hint">Most played on the field paired with least played on the bench. You decide: tap any player to pick someone else.</p>`
+    : `<p class="empty">Playing time is within a minute across the team right now.</p>`);
+}
+function dockView(g) {
+  cleanQueue(g);
+  if (!g.queue.length && !g.gkNext) return '';
+  const rows = g.queue.map((q, i) => `<div class="qrow"><span class="qn"><b>${esc(nm(q.off))}</b> → <b>${esc(nm(q.on))}</b></span><button class="btn sm primary" data-act="on" data-i="${i}">On ✓</button><button class="x" data-act="unq" data-i="${i}" aria-label="Cancel this sub">✕</button></div>`).join('');
+  const gkRow = !g.gkNext ? '' : g.field.includes(g.gkNext)
+    ? `<div class="qrow"><span class="qn"><span class="tag gk">GK</span> ${g.gk ? esc(nm(g.gk)) + ' → ' : ''}<b>${esc(nm(g.gkNext))}</b> takes the gloves</span><button class="btn sm primary" data-act="gkgo">Done ✓</button><span></span></div>`
+    : `<div class="qrow"><span class="qn"><span class="tag gk">GK</span> <b>${esc(nm(g.gkNext))}</b> takes over in goal once on the field</span></div>`;
+  const head = g.alert === 'now' ? 'Sub time' : g.alert === 'soon' ? 'Get ready' : 'Waiting at the half line';
+  return `<div class="dock ${g.alert}" aria-live="assertive"><div class="dhead"><b>${head}</b><span>Tap On when the ref waves them on</span></div>${rows}${gkRow}
+    <div class="row">${g.queue.length > 1 ? '<button class="btn primary big grow" data-act="onall">All on now</button>' : ''}<button class="btn ghost sm" data-act="clearq">Clear</button></div></div>`;
+}
+function clockBar(g) {
+  const per = halfMs(), c = clockMs(g), n = S.cfg.subsPerHalf;
+  const label = (g.period === 1 ? '1st half' : '2nd half') + ' · ' + ({ ready: g.period === 2 ? 'Halftime' : 'Ready', running: 'Running', paused: 'Paused' }[g.status]);
+  const over = g.status === 'running' && c >= per;
+  const main = g.status === 'running' ? ['pause', 'Pause'] : g.status === 'paused' ? ['clock', 'Resume'] : ['clock', g.period === 1 ? 'Kick off' : 'Start 2nd half'];
+  const markers = Array.from({ length: n }, (_, i) => `<b style="left:${(i + 1) / (n + 1) * 100}%"></b>`).join('');
+  const endLabel = g.period === 1 ? 'End 1st half' : 'End game';
+  return `<section class="card clock ${g.alert}">
+    <div class="meta"><span>${label}</span><button class="btn sm" data-act="lock">Lock</button></div>
+    <div class="clrow"><div class="time" id="clk">${fmt(c)}</div>
+      ${over ? `<button class="btn primary big" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again' : endLabel}</button>` : `<button class="btn primary big" data-act="${main[0]}">${main[1]}</button>`}</div>
+    <div class="track"><i id="bar" style="width:${Math.min(100, c / per * 100)}%"></i>${markers}</div>
+    <div class="next" id="next"></div></section>`;
+}
+function gameView() {
+  const g = S.game;
+  if (g.status === 'final') return summaryView(g);
+  cleanQueue(g);
+  const endLabel = g.period === 1 ? 'End 1st half' : 'End game', canEnd = g.status === 'running' || g.status === 'paused';
+  const bench = [...g.bench].sort((a, b) => g.p[a].out - g.p[b].out || playedMs(a, g) - playedMs(b, g) || ridx(a) - ridx(b));
+  return `
+  ${clockBar(g)}
+  ${g.status === 'ready' ? `<p class="hint">${g.ht ? 'Halftime changes are already in (green IN, red OFF). ' : ''}Tap a player to swap them with the bench or switch positions. Subs here happen straight away because the clock is stopped.</p>` : ''}
+  ${pitchView(g)}
+  <p class="hint">Dot on a player: orange has played more than the team average, blue has played less. Tap a player to sub them.</p>
+  <section class="card"><h2>Bench · ${g.bench.length}</h2>${bench.length ? `<div class="grid">${bench.map(id => chip(g, id)).join('')}</div>` : '<p class="empty">Everyone is playing.</p>'}</section>
+  ${g.status === 'running' || g.status === 'paused' ? `<section class="card" id="sugg">${suggestInner(g)}</section>` : ''}
+  <section class="card"><h2>Subs so far</h2>${g.log.length ? `<ul class="log">${g.log.map(l => `<li><b>${l.at}</b> ${esc(l.text)}</li>`).join('')}</ul>` : '<p class="empty">None yet.</p>'}
+    <div class="row"><button class="btn sm" data-act="undo" ${g.hist.length ? '' : 'disabled'}>Undo last change</button>
+    ${canEnd ? `<button class="btn ghost sm" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again to ' + endLabel.toLowerCase() : endLabel}</button>` : ''}
+    ${g.status === 'ready' && g.period === 1 ? '<button class="btn ghost sm" data-act="back">Back to setup</button>' : ''}</div></section>
+  ${dockView(g)}`;
+}
+function summaryView(g) {
+  const ids = Object.keys(g.p).sort((a, b) => g.p[b].played - g.p[a].played);
+  const max = Math.max(1, ...ids.map(id => g.p[id].played));
+  const spread = ids.length ? g.p[ids[0]].played - g.p[ids[ids.length - 1]].played : 0;
+  return `<div class="top"><h1>Full time</h1></div>
+  <section class="card"><h2>Minutes this game</h2>
+    <div class="sum">${ids.map(id => `<span class="nm">${esc(nm(id))}</span><span class="v">${fmt(g.p[id].played)}</span><div class="bar"><i style="width:${g.p[id].played / max * 100}%"></i></div>`).join('')}</div>
+    <p class="hint">Most to least played: ${fmt(spread)} apart. Tournament totals are saved.</p>
+  </section>
+  ${(S.games || 0) > 1 ? `<section class="card"><h2>Tournament totals</h2>
+    <div class="sum">${S.roster.filter(r => r.tot).sort((a, b) => b.tot - a.tot).map(r => `<span class="nm">${esc(r.name)}</span><span class="v">${fmt(r.tot)}</span>`).join('')}</div></section>` : ''}
+  <button class="btn primary big" data-act="newgame">Set up next game</button>`;
+}
+function sheetView() {
+  if (!ui.sheet) return '';
+  return `<div class="scrim" data-act="sheetclose"><div class="sheet" role="dialog" aria-label="${esc(ui.sheet.title)}" data-stop="1"><h3>${esc(ui.sheet.title)}</h3>
+    ${ui.sheet.items.map((it, i) => it.head ? `<div class="shead">${esc(it.head)}</div>` : `<button class="btn" data-act="sheet" data-i="${i}" ${it.disabled ? 'disabled' : ''}><span>${esc(it.label)}${it.tag ? ` <span class="tag sug">${esc(it.tag)}</span>` : ''}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</button>`).join('')}
+    <button class="btn ghost" data-act="sheetclose">Cancel</button></div></div>`;
+}
+function lockView() {
+  const g = S.game; cleanQueue(g);
+  const has = g.queue.length || g.gkNext;
+  return `<div class="lock" role="dialog" aria-label="Screen locked"><div class="hint">${g.period === 1 ? '1st' : '2nd'} half</div><div class="time" id="clk2">${fmt(clockMs(g))}</div><div class="next" id="next2"></div>
+    ${has ? `<div class="banner">${g.alert === 'now' ? 'SUB TIME' : g.alert === 'soon' ? 'GET READY' : 'AT THE HALF LINE'}<br>${esc(queueText(g)).replace(/\n/g, '<br>')}</div>` : ''}
+    <button class="btn hold" data-hold="1">Press and hold to unlock</button></div>`;
+}
+function render() {
+  $('#app').innerHTML = (S.game ? gameView() : setupView()) + sheetView() + (ui.locked && S.game ? lockView() : '');
+  updateTexts();
+}
+
+/* ============ sheets ============ */
+const openSheet = (title, items) => { ui.sheet = { title, items }; };
+const commitSub = (g, off, on) => { if (g.status === 'ready') directSwap(off, on); else queueAdd(g, off, on, false); };
+// Pick who comes on for a field player. Least played first; the first one is flagged as the suggestion.
+function benchPicker(off, after) {
+  const g = S.game, { ons } = rankLists(g), po = playedMs(off, g);
+  openSheet('Who comes on for ' + nm(off) + '?', [{ head: 'Least played first' },
+    ...(ons.length ? ons.map((b, i) => {
+      const pb = playedMs(b, g), d = po - pb;
+      return { label: nm(b), tag: i === 0 && d > 0 ? 'Suggested' : '', sub: fmt(pb) + (d > 0 ? ' · ' + fmtShort(d) + ' less' : ''), fn: () => { commitSub(g, off, b); if (after) after(); } };
+    }) : [{ head: 'Nobody free on the bench' }])]);
+}
+// Pick who comes off for a bench player. Most played first, keeper last.
+function fieldPicker(on) {
+  const g = S.game, { offs } = rankLists(g), pb = playedMs(on, g);
+  let first = true;
+  openSheet('Who does ' + nm(on) + ' replace?', [{ head: 'Most played first' }, ...offs.map(o => {
+    const po = playedMs(o, g), d = po - pb, sug = first && o !== g.gk && d > 0; if (sug) first = false;
+    return { label: nm(o), tag: sug ? 'Suggested' : (o === g.gk ? 'GK' : ''), sub: posOf(g, o) + ' · ' + fmt(po) + (d > 0 ? ' · ' + fmtShort(d) + ' more' : ''), fn: () => commitSub(g, o, on) };
+  })]);
+}
+function playerSheet(id) {
+  const g = S.game, p = g.p[id], onF = g.field.includes(id), items = [];
+  if (onF) {
+    const q = g.queue.find(x => x.off === id), free = rankLists(g).ons.length > 0;
+    if (q) {
+      items.push({ head: nm(id) + ' → ' + nm(q.on) + ' is waiting for the ref' });
+      items.push({ label: 'Change who goes on', fn: () => benchPicker(id) });
+      items.push({ label: 'Cancel this sub', fn: () => { g.queue = g.queue.filter(x => x !== q); cleanQueue(g); } });
+    } else items.push({ label: 'Sub off…', sub: g.status === 'ready' ? 'happens now' : 'goes to the half line', disabled: !free, fn: () => benchPicker(id) });
+    items.push({ head: 'Other' });
+    items.push({ label: 'Switch positions…', fn: () => openSheet('Switch ' + nm(id) + ' (' + posOf(g, id) + ') with…', g.field.filter(o => o !== id).map(o => ({ label: nm(o), sub: posOf(g, o), fn: () => { pushHistory(g); swapPositions(g, id, o); } }))) });
+    items.push(g.gk === id ? { label: 'Not the goalie', fn: () => { g.gk = ''; } } : { label: 'Make goalie', fn: () => { pushHistory(g); g.gk = id; syncGk(g); } });
+    items.push({ label: 'Hurt or tired out…', sub: 'sub off and keep out of suggestions', disabled: !free, fn: () => benchPicker(id, () => { p.out = true; }) });
+  } else {
+    const q = g.queue.find(x => x.on === id);
+    if (q) {
+      items.push({ head: nm(id) + ' is waiting to replace ' + nm(q.off) });
+      items.push({ label: 'Change who comes off', fn: () => fieldPicker(id) });
+      items.push({ label: 'Cancel this sub', fn: () => { g.queue = g.queue.filter(x => x !== q); cleanQueue(g); } });
+    } else if (!p.out) items.push({ label: 'Bring on for…', sub: g.status === 'ready' ? 'happens now' : 'goes to the half line', fn: () => fieldPicker(id) });
+    items.push({ head: 'Other' });
+    items.push(p.out ? { label: 'Available again', fn: () => { p.out = false; } } : { label: 'Mark unavailable', fn: () => { p.out = true; g.queue = g.queue.filter(x => x.on !== id); } });
+  }
+  openSheet(nm(id) + (onF ? ' · ' + posOf(g, id) : ' · bench') + ' · ' + fmt(playedMs(id, g)) + ' played', items);
+}
+
+/* ============ events ============ */
+function act(a, d) {
+  const g = S.game;
+  switch (a) {
+    case 'here': { const r = R(d.id); r.here = !r.here; S.setup.edited = false; break; }
+    case 'del': S.roster = S.roster.filter(r => r.id !== d.id); S.setup.edited = false; break;
+    case 'add': addPlayers(ui.addText); ui.addText = ''; S.setup.edited = false; break;
+    case 'sample': addPlayers(SAMPLE.join(',')); S.setup.edited = false; break;
+    case 'cfg': {
+      const k = d.k, dv = +d.d, c = S.cfg;
+      if (k === 'halfMin') c.halfMin = Math.min(45, Math.max(5, c.halfMin + dv));
+      if (k === 'subsPerHalf') c.subsPerHalf = Math.min(8, Math.max(1, c.subsPerHalf + dv));
+      if (k === 'swaps') c.swaps = Math.min(7, Math.max(0, c.swaps + dv));
+      break;
+    }
+    case 'gk': {
+      const s = S.setup;
+      s.gks = s.gks.includes(d.id) ? s.gks.filter(x => x !== d.id) : [...s.gks, d.id];
+      s.edited = false; break;
+    }
+    case 'setsubs': S.cfg.subsPerHalf = +d.v; break;
+    case 'starter': {
+      const s = S.setup; s.edited = true;
+      s.starters = s.starters.includes(d.id) ? s.starters.filter(x => x !== d.id) : [...s.starters, d.id];
+      break;
+    }
+    case 'auto': S.setup.edited = false; break;
+    case 'start': startGame(); return;
+    case 'alerts': enableAlerts(); return;
+    case 'test': audio(); testAlert(); return;
+    case 'sound': S.sound = !S.sound; audio(); break;
+    case 'resettot':
+      if (ui.confirm === 'resettot') { S.roster.forEach(r => { r.tot = 0; }); S.games = 0; ui.confirm = null; S.setup.edited = false; }
+      else { ui.confirm = 'resettot'; setTimeout(() => { if (ui.confirm === 'resettot') { ui.confirm = null; render(); } }, 3500); }
+      break;
+    case 'back': S.game = null; releaseWake(); closeNotif('game'); break;
+    case 'clock': startClock(); return;
+    case 'pause': pauseClock(); return;
+    case 'endhalf':
+      if (ui.confirm === 'endhalf') { ui.confirm = null; endHalf(); return; }
+      ui.confirm = 'endhalf'; setTimeout(() => { if (ui.confirm === 'endhalf') { ui.confirm = null; render(); } }, 3500); break;
+    case 'on': goOn(+d.i); return;
+    case 'onall': goOn('all'); return;
+    case 'gkgo': goOn('gk'); return;
+    case 'unq': g.queue.splice(+d.i, 1); cleanQueue(g); break;
+    case 'clearq': g.queue = []; g.gkNext = ''; g.alert = ''; closeNotif('subs'); break;
+    case 'sq': queueAdd(g, d.off, d.on, false); break;
+    case 'sqall': suggestPairs(g, 3).forEach(([o, n]) => queueAdd(g, o, n, false)); break;
+    case 'player': playerSheet(d.id); break;
+    case 'formation': S.cfg.formation = d.v; break;
+    case 'undo': undo(); return;
+    case 'lock': ui.locked = true; break;
+    case 'newgame': S.game = null; S.setup.edited = false; break;
+    case 'sheet': { const it = ui.sheet.items[+d.i]; ui.sheet = null; if (it && !it.disabled) it.fn(); break; }
+    case 'sheetclose': ui.sheet = null; break;
+  }
+  save(); render();
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'sheetclose' && e.target.closest('[data-stop]') && !e.target.closest('button')) return;
+  act(el.dataset.act, el.dataset);
+});
+document.addEventListener('input', e => { if (e.target.id === 'addText') ui.addText = e.target.value; });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'addText') { e.preventDefault(); act('add', {}); } });
+let holdTimer = null;
+document.addEventListener('pointerdown', e => {
+  const el = e.target.closest('[data-hold]'); if (!el) return;
+  el.classList.add('holding'); holdTimer = setTimeout(() => { ui.locked = false; render(); }, 700);
+});
+['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => {
+  clearTimeout(holdTimer); const h = document.querySelector('.holding'); if (h) h.classList.remove('holding');
+}));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { wake(); tick(); } });
+
+/* ============ boot ============ */
+if ('serviceWorker' in navigator) {
+  try {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.type === 'notif') { handleAction(e.data.action, e.data.t); save(); render(); }
+    });
+  } catch (e) {}
+}
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.get('action')) { handleAction(q.get('action'), +q.get('t') || Date.now()); history.replaceState(null, '', location.pathname); }
+} catch (e) {}
+render(); wake(); tick();
+setInterval(tick, 250);
+</script>
+</body>
+</html>
