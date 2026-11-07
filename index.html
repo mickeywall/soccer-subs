@@ -163,8 +163,9 @@ input[type=text]{flex:1;min-width:0}
 .clock{position:sticky;top:6px;z-index:6;padding:10px 14px;gap:6px}
 .clock .meta{align-items:center}
 .clock .clrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.clock .time{font-size:3.3rem;text-align:left}
-.clock .clrow .btn{min-width:140px}
+.clock .time{font-size:2.9rem;text-align:left}
+.cbtns{display:flex;gap:8px}
+.cbtns .btn{min-width:0;padding:6px 12px;font-size:1.05rem}
 .clock.soon{border-color:var(--warn)}
 .clock.now{border-color:var(--alert)}
 .dock{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:7;background:var(--surface);border:2px solid var(--warn);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.3)}
@@ -549,13 +550,14 @@ function updateTexts() {
   if (g.status === 'final') nx = '';
   else if (!hasBench) nx = 'Nobody on the bench, no subs needed';
   else if (g.status === 'ready') nx = g.period === 1 ? 'First sub at ' + fmtShort(segMs()) : 'Lineup set for the 2nd half';
+  else if (c >= per && g.status !== 'ready') nx = '+' + fmtShort(c - per) + ' over ' + S.cfg.halfMin + ' minutes. End the half when the ref blows the whistle.';
   else if (g.alert === 'now') nx = 'Sub time';
   else {
     const n = S.cfg.subsPerHalf; let w = null;
     for (let k = 1; k <= n; k++) if (k * segMs() > c + 500) { w = k * segMs(); break; }
     if (g.alert === 'soon') nx = 'Sub at ' + fmtShort(g.alertK * segMs()) + ' · in ' + fmtShort(g.alertK * segMs() - c);
     else if (w != null) nx = 'Next sub at ' + fmtShort(w) + ' · in ' + fmtShort(w - c);
-    else nx = c < per ? 'No more subs this half · ' + fmtShort(per - c) + ' left' : 'Time is up. End the half when the ref says so.';
+    else nx = c < per ? 'No more subs this half · ' + fmtShort(per - c) + ' left' : '+' + fmtShort(c - per) + ' over ' + S.cfg.halfMin + ' minutes. End the half when the ref blows the whistle.';
   }
   set('next', nx); set('next2', nx);
   document.querySelectorAll('[data-played]').forEach(el => { const v = fmt(playedMs(el.dataset.played, g, gm)); if (el.textContent !== v) el.textContent = v; });
@@ -845,14 +847,15 @@ function scorerSheet() {
 function clockBar(g) {
   const per = halfMs(), c = clockMs(g), n = S.cfg.subsPerHalf;
   const label = (g.period === 1 ? '1st half' : '2nd half') + ' · ' + ({ ready: g.period === 2 ? 'Halftime' : 'Ready', running: 'Running', paused: 'Paused' }[g.status]);
-  const over = g.status === 'running' && c >= per;
+  const over = (g.status === 'running' || g.status === 'paused') && c >= per;
   const main = g.status === 'running' ? ['pause', 'Pause'] : g.status === 'paused' ? ['clock', 'Resume'] : ['clock', g.period === 1 ? 'Kick off' : 'Start 2nd half'];
   const markers = Array.from({ length: n }, (_, i) => `<b style="left:${(i + 1) / (n + 1) * 100}%"></b>`).join('');
-  const endLabel = g.period === 1 ? 'End 1st half' : 'End game';
+  const canEnd = g.status === 'running' || g.status === 'paused', endLabel = g.period === 1 ? 'End half' : 'End game';
   return `<section class="card clock ${g.alert}">
     <div class="meta"><span>${label}</span><span class="msc" aria-label="Score">${scoreOf(g).us}–${scoreOf(g).them}</span><button class="btn sm" data-act="lock">Lock</button></div>
     <div class="clrow"><div class="time" id="clk">${fmt(c)}</div>
-      ${over ? `<button class="btn primary big" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again' : endLabel}</button>` : `<button class="btn primary big" data-act="${main[0]}">${main[1]}</button>`}</div>
+      <div class="cbtns"><button class="btn big${over ? '' : ' primary'}" data-act="${main[0]}">${main[1]}</button>
+      ${canEnd ? `<button class="btn big${over ? ' primary' : ''}" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again' : endLabel}</button>` : ''}</div></div>
     <div class="track"><i id="bar" style="width:${Math.min(100, c / per * 100)}%"></i>${markers}</div>
     <div class="next" id="next"></div></section>`;
 }
@@ -860,7 +863,6 @@ function gameView() {
   const g = S.game;
   if (g.status === 'final') return summaryView(g);
   cleanQueue(g);
-  const endLabel = g.period === 1 ? 'End 1st half' : 'End game', canEnd = g.status === 'running' || g.status === 'paused';
   const bench = [...g.bench].sort((a, b) => g.p[a].out - g.p[b].out || playedMs(a, g) - playedMs(b, g) || ridx(a) - ridx(b));
   return `
   ${clockBar(g)}
@@ -872,7 +874,6 @@ function gameView() {
   ${g.status === 'running' || g.status === 'paused' ? `<section class="card" id="sugg">${suggestInner(g)}</section>` : ''}
   <section class="card"><h2>Subs so far</h2>${g.log.length ? `<ul class="log">${g.log.map(l => `<li><b>${l.at}</b> ${esc(l.text)}</li>`).join('')}</ul>` : '<p class="empty">None yet.</p>'}
     <div class="row"><button class="btn sm" data-act="undo" ${g.hist.length ? '' : 'disabled'}>Undo last change</button>
-    ${canEnd ? `<button class="btn ghost sm" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again to ' + endLabel.toLowerCase() : endLabel}</button>` : ''}
     ${g.status === 'ready' && g.period === 1 ? '<button class="btn ghost sm" data-act="back">Back to setup</button>' : ''}</div></section>
   ${dockView(g)}`;
 }
