@@ -110,7 +110,7 @@ const Share = (() => {
   const Relay = {
     async publish(base, topic, text) {
       const r = await fetch(base + '/' + topic, { method: 'POST', body: text });
-      if (!r.ok) { const e = new Error('Relay answered ' + r.status); e.status = r.status; throw e; }
+      if (!r.ok) { const e = new Error('Relay answered ' + r.status); e.status = r.status; e.retryAfter = +r.headers.get('retry-after') || 0; throw e; }
     },
     /** Latest cached message(s) for a topic, newest last. */
     async recent(base, topic, since) {

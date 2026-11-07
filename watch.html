@@ -166,7 +166,7 @@ function render() {
   if (!link) { $app.innerHTML = '<p class="empty-msg">This link is not complete. Ask the coach to send it again.</p>'; return; }
   const g = state && state.game;
   const age = state ? Math.round((Date.now() - recvAt) / 1000) : 0;
-  const stale = state && g && g.status === 'running' && Date.now() - recvAt > 8 * 60000;
+  const stale = state && g && g.status === 'running' && Date.now() - recvAt > 25 * 60000;
   let pill = '<span class="pill">Connecting</span>';
   if (state && state.closed) pill = '<span class="pill">Sharing stopped</span>';
   else if (conn === 'offline') pill = '<span class="pill warn">Reconnecting</span>';

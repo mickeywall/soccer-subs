@@ -213,7 +213,7 @@ const DEFAULT = () => ({
   setup: { lineup: [], starters: [], gks: [], edited: false },   // lineup = starters by pitch slot (slot 0 = GK); gks = goalie pool
   sound: true,
   results: [],                                  // final score of each finished game
-  share: { on: false, relay: '', team: '', opp: '', seq: 0, seen: [] },   // live sharing (keys are added when you start it)
+  share: { on: false, relay: '', team: '', opp: '', seq: 0, seen: [], sent: [] },   // live sharing (keys are added when you start it)
   game: null,
 });
 function load() {
@@ -1185,13 +1185,13 @@ function shareSig(snap) { const o = JSON.parse(JSON.stringify(snap)); delete o.t
 function sharePing(force) {
   if (!shareOn()) return;
   if (force) SH.force = true;
-  clearTimeout(SH.timer); SH.timer = setTimeout(shareFlush, force ? 30 : 1200);
+  clearTimeout(SH.timer); SH.timer = setTimeout(shareFlush, force ? 30 : 2500);
 }
 async function shareFlush() {
   if (!shareOn()) return;
   if (SH.busy) { SH.dirty = true; return; }
   const snap = shareSnapshot(), sig = shareSig(snap), now = Date.now();
-  const beat = snap.game && snap.game.status === 'running' && now - SH.lastPub > 4 * 60000;     // lets watchers know you are still there
+  const beat = snap.game && snap.game.status === 'running' && now - SH.lastPub > 10 * 60000;    // lets watchers know you are still there
   if (sig === SH.sig && !SH.force && !beat) return;
   const wait = SH.minGap - (now - SH.lastPub);                                                // at most one message every 4 seconds
   if (wait > 0 && !SH.force) { clearTimeout(SH.timer); SH.timer = setTimeout(shareFlush, wait + 50); return; }
@@ -1202,9 +1202,12 @@ async function shareFlush() {
     if (text.length > 3800 && snap.game) { snap.game.ev = snap.game.ev.slice(-20); text = await Share.sealState(S.share, snap); }   // relay messages are limited to about 4 KB
     await Share.Relay.publish(S.share.relay, Share.topics(S.share.id).state, text);
     SH.sig = sig; SH.lastPub = Date.now(); SH.err = ''; clearTimeout(SH.retry);
+    S.share.sent = (S.share.sent || []).filter(t => SH.lastPub - t < 864e5).concat(SH.lastPub).slice(-400); persist();   // the free relay allows about 250 a day
   } catch (e) {
     SH.err = e && e.status === 429 ? 'limit' : 'offline';
-    clearTimeout(SH.retry); SH.retry = setTimeout(() => { SH.force = true; shareFlush(); }, SH.err === 'limit' ? 90000 : 20000);
+    const ra = (e && e.retryAfter ? e.retryAfter : 0) * 1000;
+    if (SH.err === 'limit') SH.limitUntil = Date.now() + ra;
+    clearTimeout(SH.retry); SH.retry = setTimeout(() => { SH.force = true; shareFlush(); }, SH.err === 'limit' ? (ra ? Math.min(900000, Math.max(90000, ra)) : 600000) : 20000);
   } finally {
     SH.busy = false; if (SH.dirty) { SH.dirty = false; sharePing(); }
     shareStatusEl();
@@ -1261,10 +1264,11 @@ async function shareNew() {                                              // new 
 }
 function shareStatusText() {
   if (!shareOn()) return '';
-  if (SH.err === 'limit') return 'The relay is limiting messages right now, so watchers may see updates late. It clears by itself.';
+  if (SH.err === 'limit') { const m = SH.limitUntil > Date.now() ? Math.ceil((SH.limitUntil - Date.now()) / 60000) : 0; return 'The free relay is limiting messages from this phone, so watchers are not getting updates' + (m ? ' for about ' + m + ' more minutes' : ' right now') + '. The game itself is not affected and this clears by itself.'; }
   if (SH.err === 'offline') return 'No connection to the relay. The app works as normal and will catch watchers up when the connection returns.';
   if (!SH.lastPub) return 'Starting…';
-  return 'Sharing is on. Last update sent at ' + new Date(SH.lastPub).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + '.';
+  const n = (S.share.sent || []).filter(t => Date.now() - t < 864e5).length;
+  return 'Sharing is on. Last update sent at ' + new Date(SH.lastPub).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + '. Sent ' + n + ' in the last 24 hours (the free relay allows about 250 per phone per day).' + (n >= 200 ? ' You are close to the limit.' : '');
 }
 function shareStatusEl() { const el = document.getElementById('shStatus'); if (el) el.textContent = shareStatusText(); }
 async function copyShare(url, what) {
