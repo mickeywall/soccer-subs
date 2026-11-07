@@ -165,7 +165,8 @@ input[type=text]{flex:1;min-width:0}
 .disc .dq{font-size:.72rem;font-weight:800;color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .disc.gk{background:var(--warn-bg);border-color:var(--warn)}
 .disc.empty{background:rgba(255,255,255,.18);border-style:dashed;border-color:var(--chalk);color:#fff;box-shadow:none;justify-content:center}
-.disc.empty .dpos,.disc.empty .dn{color:#fff}
+.disc.empty .dpos,.disc.empty .dn,.disc.empty .dt{color:#fff}
+.disc.down{border-color:var(--red);background:rgba(0,0,0,.28)}
 .disc.qd{border-style:dashed;border-color:var(--alert)}
 .disc:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 /* clock bar and queue dock stay on screen while you scroll */
@@ -271,7 +272,7 @@ function gkReserve(g, gm) {
   if (pool.length < 2) return () => 0;
   const H = halfMs(), seg = H / (g.subs + 1);
   const wt = w => w <= g.subs ? w * seg : w === g.subs + 1 ? H : H + (w - g.subs - 1) * seg;
-  const T = g.field.length * 2 * H / (g.field.length + g.bench.filter(id => !g.p[id].out).length);
+  const fl = g.field.filter(Boolean).length, T = fl * 2 * H / (fl + g.bench.filter(id => !g.p[id].out).length);
   const res = {}, cur = at.filter(w => wt(w) <= gm + 1).length;
   for (let j = cur + 1; j < pool.length; j++) {
     const len = (j < at.length ? wt(at[j]) : 2 * H) - Math.max(gm, wt(at[j - 1]));
@@ -289,7 +290,7 @@ function suggest(g, opt = {}) {
     .sort((a, b) => pl(a) - pl(b) || g.p[a].benchSince - g.p[b].benchSince || ridx(a) - ridx(b));
   const k = Math.min(g.k || 1, avail.length);
   while (on.length < k && rest.length) on.push(rest.shift());
-  const cand = g.field.filter(id => !prot.has(id))
+  const cand = g.field.filter(id => id && !prot.has(id))
     .sort((a, b) => pl(b) - pl(a) || g.p[a].onSince - g.p[b].onSince || ridx(a) - ridx(b));
   const n = Math.min(on.length, cand.length);
   return { off: cand.slice(0, n), on: on.slice(0, n), gk: newGk };
@@ -418,11 +419,47 @@ function evMinute(ev) {
 }
 function addEvent(g, type, id) {
   g.events.push({ type, id: id || '', half: g.period, c: clockMs(g), n: nextSeq(g) });
-  if (type === 'red' && id) g.p[id].out = true;           // sent off: never suggested to come back on
+  if (type === 'red' && id) sendOff(g, id);
+}
+// A red card takes the kid off at once and nobody replaces them: the team plays a man down for the rest of the game.
+// Their position stays empty (a "hole"); the coach can move another player across to cover it.
+function sendOff(g, id) {
+  const p = g.p[id], i = g.field.indexOf(id), gm = gameMs(g);
+  p.out = true;
+  if (i >= 0) {
+    p.played += gm - p.onSince; p.onSince = null; p.benchSince = gm;
+    g.field[i] = ''; g.bench.push(id);
+    (g.sentOff = g.sentOff || []).push({ id, slot: i, at: gm });
+    if (g.gk === id) g.gk = '';                                  // the goalie was sent off: the GK spot is empty until you move someone in
+    g.ht = null;
+  }
+  g.queue = (g.queue || []).filter(q => q.off !== id && q.on !== id);
+}
+function enforceSendOffs(g) {            // after an undo, nobody with a red card may be back on the field
+  (g.sentOff || []).forEach(so => {
+    const i = g.field.indexOf(so.id);
+    if (i >= 0) { const p = g.p[so.id]; if (p.onSince != null) { p.played += (so.at != null ? so.at : gameMs(g)) - p.onSince; p.onSince = null; } g.field[i] = ''; if (!g.bench.includes(so.id)) g.bench.push(so.id); }
+    g.p[so.id].out = true;
+  });
 }
 function removeEvent(g, ev) {
   g.events = g.events.filter(e => e !== ev);
-  if (ev.type === 'red' && ev.id && !g.events.some(e => e.type === 'red' && e.id === ev.id)) g.p[ev.id].out = false;
+  if (ev.type !== 'red' || !ev.id || g.events.some(e => e.type === 'red' && e.id === ev.id)) return;
+  const p = g.p[ev.id], so = (g.sentOff || []).find(x => x.id === ev.id);
+  p.out = false;
+  if (so) {                                                       // card taken back: they return to their old spot if it is still empty
+    g.sentOff = g.sentOff.filter(x => x !== so);
+    const h = g.field[so.slot] === '' ? so.slot : g.field.indexOf('');
+    const bi = g.bench.indexOf(ev.id);
+    if (h >= 0 && bi >= 0) { g.bench.splice(bi, 1); g.field[h] = ev.id; p.onSince = gameMs(g); }
+  }
+}
+function moveToSlot(g, id, i) {          // cover an empty position with a player who is already on the field
+  const j = g.field.indexOf(id); if (j < 0 || g.field[i]) return;
+  pushHistory(g);
+  g.field[i] = id; g.field[j] = '';
+  if (g.gk === id && i !== 0) g.gk = '';
+  if (i === 0 && (g.gkPool || []).length) g.gk = id;
 }
 const scoreOf = g => ({ us: g.events.filter(e => e.type === 'goal').length, them: g.events.filter(e => e.type === 'opp').length });
 function evBadges(g, id) {
@@ -436,7 +473,7 @@ function rankLists(g) {
   const qOff = new Set(g.queue.map(q => q.off)), qOn = new Set(g.queue.map(q => q.on));
   const ons = g.bench.filter(id => !g.p[id].out && !qOn.has(id))
     .sort((a, b) => pl(a) - pl(b) || g.p[a].benchSince - g.p[b].benchSince || ridx(a) - ridx(b));
-  const offs = g.field.filter(id => !qOff.has(id))
+  const offs = g.field.filter(id => id && !qOff.has(id))
     .sort((a, b) => (a === g.gk) - (b === g.gk) || pl(b) - pl(a) || g.p[a].onSince - g.p[b].onSince || ridx(a) - ridx(b));
   return { ons, offs, pl };
 }
@@ -497,7 +534,7 @@ function halftimeLineup(g) {
 }
 function finishGame(g) {
   const gm = gameMs(g);
-  g.field.forEach(id => { const p = g.p[id]; p.played += gm - p.onSince; p.onSince = null; });
+  g.field.filter(Boolean).forEach(id => { const p = g.p[id]; p.played += gm - p.onSince; p.onSince = null; });
   g.status = 'final'; g.queue = []; g.gkNext = ''; g.alert = '';
   if (!g.saved) { S.games = (S.games || 0) + 1; const sc = scoreOf(g); (S.results = S.results || []).push({ us: sc.us, them: sc.them }); Object.keys(g.p).forEach(id => { const r = R(id); if (r) r.tot += g.p[id].played; }); g.saved = true; }
   releaseWake();
@@ -527,7 +564,7 @@ function directSwap(offId, onId) {            // before kickoff and at halftime 
 }
 function undo() {
   const g = S.game; const h = g.hist.pop(); if (!h) return;
-  Object.assign(g, JSON.parse(h)); cleanQueue(g); save(); render();
+  Object.assign(g, JSON.parse(h)); enforceSendOffs(g); cleanQueue(g); save(); render();
 }
 
 /* ============ timer events ============ */
@@ -836,6 +873,10 @@ function pitchView(g) {
   const F = slotsOf(g);
   const discs = g.field.map((id, i) => {
     const [pos, x, y] = F[i] || ['', 50, 50], q = g.queue.find(z => z.off === id);
+    if (!id) {
+      const so = (g.sentOff || []).find(z => z.slot === i);
+      return `<button class="disc empty down" style="left:${x}%;top:${y}%" data-act="hole" data-i="${i}" aria-label="${pos}: empty, a man down"><span class="dpos">${pos}</span><span class="dn">Man down</span>${so ? `<span class="dt">🟥 ${esc(nm(so.id))}</span>` : '<span class="dt">tap to cover</span>'}</button>`;
+    }
     const cls = ['disc', g.gk === id ? 'gk' : '', q ? 'qd' : ''].join(' ');
     return `<button class="${cls}" style="left:${x}%;top:${y}%" data-act="player" data-id="${id}" data-load="${id}">
       <span class="dpos">${pos}${g.ht && g.ht.on.includes(id) ? ' · IN' : ''}${q ? ' <span class="aoff">▼</span>' : ''}</span><span class="dn">${esc(nm(id))}</span>
@@ -870,7 +911,7 @@ function scoreBar(g) {
     ${any ? '<button class="btn ghost sm undog" data-act="undogoal">Undo last goal</button>' : ''}</section>`;
 }
 function scorerSheet() {
-  const g = S.game, items = [{ head: 'On the field' }, ...g.field.map(id => ({ label: nm(id), sub: posOf(g, id), fn: () => addEvent(g, 'goal', id) }))];
+  const g = S.game, items = [{ head: 'On the field' }, ...g.field.filter(Boolean).map(id => ({ label: nm(id), sub: posOf(g, id), fn: () => addEvent(g, 'goal', id) }))];
   if (g.bench.length) items.push({ head: 'Bench' }, ...g.bench.map(id => ({ label: nm(id), fn: () => addEvent(g, 'goal', id) })));
   items.push({ head: 'Other' }, { label: 'Own goal or not sure who', fn: () => addEvent(g, 'goal', '') });
   openSheet('Who scored?', items);
@@ -883,7 +924,7 @@ function clockBar(g) {
   const markers = Array.from({ length: n }, (_, i) => `<b style="left:${(i + 1) / (n + 1) * 100}%"></b>`).join('');
   const canEnd = g.status === 'running' || g.status === 'paused', endLabel = g.period === 1 ? 'End half' : 'End game';
   return `<section class="card clock ${g.alert}">
-    <div class="meta"><span>${label}</span><span class="msc" aria-label="Score">${scoreOf(g).us}–${scoreOf(g).them}</span><button class="btn sm" data-act="lock">Lock</button></div>
+    <div class="meta"><span>${label}</span><span class="msc" aria-label="Score">${scoreOf(g).us}–${scoreOf(g).them}</span>${g.field.some(x => !x) ? `<span class="tag out" title="Playing short after a red card">${g.field.filter(x => !x).length} DOWN</span>` : ''}<button class="btn sm" data-act="lock">Lock</button></div>
     <div class="clrow"><div class="time" id="clk">${fmt(c)}</div>
       <div class="cbtns"><button class="btn big${over ? '' : ' primary'}" data-act="${main[0]}">${main[1]}</button>
       ${canEnd ? `<button class="btn big${over ? ' primary' : ''}" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again' : endLabel}</button>` : ''}</div></div>
@@ -971,12 +1012,23 @@ function fieldPicker(on) {
     return { label: nm(o), tag: sug ? 'Suggested' : (o === g.gk ? 'GK' : ''), sub: posOf(g, o) + ' · ' + fmt(po) + (d > 0 ? ' · ' + fmtShort(d) + ' more' : ''), fn: () => commitSub(g, o, on) };
   })]);
 }
+function confirmRed(id) {
+  const g = S.game, onF = g.field.includes(id);
+  openSheet('Red card for ' + nm(id) + '?', [
+    { head: onF ? nm(id) + ' leaves the field now and nobody replaces them. You play a man down for the rest of the game.' : nm(id) + ' cannot come back on.' },
+    { label: '🟥 Yes, show the red card', fn: () => addEvent(g, 'red', id) }]);
+}
+function holeSheet(i) {
+  const g = S.game, F = slotsOf(g), movers = g.field.map((id, j) => [id, j]).filter(([id]) => id);
+  openSheet('Cover ' + F[i][0], [{ head: 'You are a man down. Move a player across to this position; their old spot stays empty.' },
+    ...movers.map(([id, j]) => ({ label: nm(id), sub: 'now ' + F[j][0], fn: () => moveToSlot(g, id, i) }))]);
+}
 function playerSheet(id) {
   const g = S.game, p = g.p[id], onF = g.field.includes(id), items = [];
   const evItems = [{ head: 'Goals and cards' },
     { label: '⚽ Scored a goal', fn: () => addEvent(g, 'goal', id) },
     { label: '🟨 Yellow card', fn: () => addEvent(g, 'yellow', id) },
-    { label: '🟥 Red card', sub: 'sent off, cannot return', fn: () => addEvent(g, 'red', id) },
+    { label: '🟥 Red card', sub: onF ? 'sent off, a man down' : 'cannot return', fn: () => confirmRed(id) },
     ...g.events.filter(e => e.id === id).map(e => ({ label: 'Remove ' + EV_ICON[e.type] + (e.type === 'goal' ? ' ' + evMinute(e) : ' card ' + evMinute(e)), fn: () => removeEvent(g, e) }))];
   if (onF) {
     const q = g.queue.find(x => x.off === id), free = rankLists(g).ons.length > 0;
@@ -987,7 +1039,7 @@ function playerSheet(id) {
     } else items.push({ label: 'Sub off…', sub: g.status === 'ready' ? 'happens now' : 'goes to the half line', disabled: !free, fn: () => benchPicker(id) });
     items.push(...evItems);
     items.push({ head: 'Other' });
-    items.push({ label: 'Switch positions…', fn: () => openSheet('Switch ' + nm(id) + ' (' + posOf(g, id) + ') with…', g.field.filter(o => o !== id).map(o => ({ label: nm(o), sub: posOf(g, o), fn: () => { pushHistory(g); swapPositions(g, id, o); } }))) });
+    items.push({ label: 'Switch positions…', fn: () => openSheet('Switch ' + nm(id) + ' (' + posOf(g, id) + ') with…', g.field.filter(o => o && o !== id).map(o => ({ label: nm(o), sub: posOf(g, o), fn: () => { pushHistory(g); swapPositions(g, id, o); } }))) });
     items.push(g.gk === id ? { label: 'Not the goalie', fn: () => { g.gk = ''; } } : { label: 'Make goalie', fn: () => { pushHistory(g); g.gk = id; syncGk(g); } });
     items.push({ label: 'Hurt or tired out…', sub: 'sub off and keep out of suggestions', disabled: !free, fn: () => benchPicker(id, () => { p.out = true; }) });
   } else {
@@ -999,7 +1051,8 @@ function playerSheet(id) {
     } else if (!p.out) items.push({ label: 'Bring on for…', sub: g.status === 'ready' ? 'happens now' : 'goes to the half line', fn: () => fieldPicker(id) });
     items.push(...evItems);
     items.push({ head: 'Other' });
-    items.push(p.out ? { label: 'Available again', fn: () => { p.out = false; } } : { label: 'Mark unavailable', fn: () => { p.out = true; g.queue = g.queue.filter(x => x.on !== id); } });
+    const redded = g.events.some(e => e.type === 'red' && e.id === id);
+    if (!(p.out && redded)) items.push(p.out ? { label: 'Available again', fn: () => { p.out = false; } } : { label: 'Mark unavailable', fn: () => { p.out = true; g.queue = g.queue.filter(x => x.on !== id); } });
   }
   openSheet(nm(id) + (onF ? ' · ' + posOf(g, id) : ' · bench') + ' · ' + fmt(playedMs(id, g)) + ' played', items);
 }
@@ -1051,6 +1104,7 @@ function act(a, d) {
     case 'sq': queueAdd(g, d.off, d.on, false); break;
     case 'sqall': suggestPairs(g, 3).forEach(([o, n]) => queueAdd(g, o, n, false)); break;
     case 'player': playerSheet(d.id); break;
+    case 'hole': holeSheet(+d.i); break;
     case 'ourgoal': scorerSheet(); break;
     case 'oppgoal': addEvent(g, 'opp'); break;
     case 'undogoal': { const i = g.events.map(e => e.type).reduce((a, t, j) => (t === 'goal' || t === 'opp') ? j : a, -1); if (i >= 0) g.events.splice(i, 1); break; }
