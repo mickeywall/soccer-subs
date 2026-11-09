@@ -66,6 +66,11 @@ input[type=text]{background:var(--surface);border:1px solid var(--line);border-r
 .log li>b:first-child{min-width:3.4ch;font-variant-numeric:tabular-nums}
 .muted{color:var(--ink-2);font-variant-numeric:tabular-nums}
 .tag{font-size:.68rem;font-weight:800;letter-spacing:.05em;padding:2px 6px;border-radius:6px;background:var(--red);color:#fff}
+.tag.gk{background:var(--warn-bg);color:var(--warn)}
+.sw{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap}
+.aoff,.aon{font-weight:900;font-size:.95em}
+.aoff{color:var(--red)}
+.aon{color:var(--green)}
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:flex;align-items:flex-end;justify-content:center}
 .sheet{width:100%;max-width:560px;background:var(--surface);border-radius:18px 18px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;max-height:80vh;overflow:auto}
 .sheet h3{margin:0 0 4px;font-size:1.05rem}
@@ -127,6 +132,11 @@ function evBadges(g, name) {
 }
 function logRows(g) {
   const rows = []; let us = 0, them = 0;
+  (g.subs || []).forEach((sb, i) => {                              // subs, newest first, shown as a red down arrow and a green up arrow
+    const [half, c, ht, pairs, gk] = sb;
+    const sw = pairs.map(([o, n]) => `<span class="sw"><span class="aoff" title="coming off">▼</span> <b>${esc(o)}</b></span> <span class="sw"><span class="aon" title="going on">▲</span> <b>${esc(n)}</b></span>`).join(' ');
+    rows.push({ k: [half, c, 1000 - i], html: `<li><b>${ht ? 'HT' : minute(half, c, state.half)}</b> ${sw}${gk ? ` <span class="sw"><span class="tag gk">GK</span> <b>${esc(gk)}</b></span>` : ''}</li>` });
+  });
   g.ev.map((e, i) => ({ e, i })).sort((a, b) => a.e[2] - b.e[2] || a.e[3] - b.e[3] || a.i - b.i).forEach(({ e, i }) => {
     const [type, who, half, c] = e, m = minute(half, c, state.half), w = who ? esc(who) : 'Own goal or unknown';
     let h;
@@ -149,7 +159,7 @@ function gameHtml(g) {
   const rows = logRows(g);
   return `<div class="pitch">${PITCH}${discs}</div>
     <section class="card"><h2>Bench</h2>${g.bench.length || g.out.length ? `<div class="grid">${g.bench.map(n => `<div class="pl"><span class="n">${esc(n)}</span>${evBadges(g, n)}</div>`).join('')}${g.out.map(n => `<div class="pl out"><span class="n">${esc(n)} <span class="tag">OFF</span></span>${evBadges(g, n)}</div>`).join('')}</div>` : '<p class="hint">Nobody on the bench.</p>'}</section>
-    <section class="card"><h2>Goals and cards</h2>${rows.length ? `<ul class="log">${rows.join('')}</ul>` : '<p class="hint">Nothing yet.</p>'}</section>`;
+    <section class="card"><h2>Game log</h2>${rows.length ? `<ul class="log">${rows.join('')}</ul>` : '<p class="hint">Nothing yet.</p>'}</section>`;
 }
 
 function scorerHtml() {

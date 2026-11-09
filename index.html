@@ -141,6 +141,10 @@ input[type=text]{flex:1;min-width:0}
 .linkbox{font-size:.78rem;width:100%;color:var(--ink-2)}
 summary{cursor:pointer;color:var(--ink-2);font-size:.9rem;padding:6px 0}
 details input{width:100%;margin-top:6px}
+.vmic{min-width:44px;font-size:1.1rem}
+.vmic.on{background:var(--red);color:var(--pitch-ink);border-color:transparent}
+.vmic.listen{outline:3px solid var(--red);outline-offset:1px}
+.vline{font-size:.88rem;font-weight:600;text-align:center;line-height:1.3;overflow-wrap:anywhere}
 .sw{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap}
 .aoff,.aon{font-weight:900;font-size:.95em}
 .aoff{color:var(--red)}
@@ -215,13 +219,14 @@ const DEFAULT = () => ({
   sound: true,
   results: [],                                  // final score of each finished game
   share: { on: false, relay: '', team: '', opp: '', seq: 0, seen: [], sent: [] },   // live sharing (keys are added when you start it)
+  voice: { speak: true, wake: true },           // voice commands
   game: null,
 });
 function load() {
   try {
     const r = JSON.parse(localStorage.getItem(KEY));
     if (r && Array.isArray(r.roster)) {
-      const d = DEFAULT(), o = Object.assign(d, r, { cfg: Object.assign(d.cfg, r.cfg), setup: Object.assign(d.setup, r.setup), share: Object.assign(d.share, r.share) });
+      const d = DEFAULT(), o = Object.assign(d, r, { cfg: Object.assign(d.cfg, r.cfg), setup: Object.assign(d.setup, r.setup), share: Object.assign(d.share, r.share), voice: Object.assign(d.voice, r.voice) });
       if (o.game) { const g = o.game; g.queue = g.queue || []; g.inbox = g.inbox || []; g.events = g.events || []; g.gkNext = g.gkNext || ''; g.alert = ''; g.formation = g.formation || '2-3-1'; delete g.pending; }
       return o;
     }
@@ -868,6 +873,8 @@ function setupView() {
 
   ${shareCard()}
 
+  ${voiceCard()}
+
   ${S.roster.some(r => r.tot) ? `<button class="btn danger sm" data-act="resettot">${ui.confirm === 'resettot' ? 'Tap again to clear totals' : 'Reset tournament totals'}</button>` : ''}`;
 }
 
@@ -935,12 +942,13 @@ function clockBar(g) {
   const markers = Array.from({ length: n }, (_, i) => `<b style="left:${(i + 1) / (n + 1) * 100}%"></b>`).join('');
   const canEnd = g.status === 'running' || g.status === 'paused', endLabel = g.period === 1 ? 'End half' : 'End game';
   return `<section class="card clock ${g.alert}">
-    <div class="meta"><span>${label}</span><span class="msc" aria-label="Score">${scoreOf(g).us}–${scoreOf(g).them}</span>${g.field.some(x => !x) ? `<span class="tag out" title="Playing short after a red card">${g.field.filter(x => !x).length} DOWN</span>` : ''}<button class="btn sm" data-act="lock">Lock</button></div>
+    <div class="meta"><span>${label}</span><span class="msc" aria-label="Score">${scoreOf(g).us}–${scoreOf(g).them}</span>${g.field.some(x => !x) ? `<span class="tag out" title="Playing short after a red card">${g.field.filter(x => !x).length} DOWN</span>` : ''}${voiceOK() ? '<button class="btn sm vmic" data-act="voice" aria-label="Voice commands">🎤</button>' : ''}<button class="btn sm" data-act="lock">Lock</button></div>
     <div class="clrow"><div class="time" id="clk">${fmt(c)}</div>
       <div class="cbtns"><button class="btn big${over ? '' : ' primary'}" data-act="${main[0]}">${main[1]}</button>
       ${canEnd ? `<button class="btn big${over ? ' primary' : ''}" data-act="endhalf">${ui.confirm === 'endhalf' ? 'Tap again' : endLabel}</button>` : ''}</div></div>
     <div class="track"><i id="bar" style="width:${Math.min(100, c / per * 100)}%"></i>${markers}</div>
-    <div class="next" id="next"></div></section>`;
+    <div class="next" id="next"></div>
+    <div class="vline" id="vline" hidden></div></section>`;
 }
 function gameView() {
   const g = S.game;
@@ -959,6 +967,7 @@ function gameView() {
   <section class="card"><h2>Game log</h2>${(() => { const r = logRows(g); return r.length ? `<ul class="log">${r.join('')}</ul>` : '<p class="empty">Subs, goals and cards will show here.</p>'; })()}
     <div class="row"><button class="btn sm" data-act="undo" ${g.hist.length ? '' : 'disabled'}>Undo last change</button>
     ${typeof Share !== 'undefined' ? `<button class="btn ghost sm" data-act="sharesheet">${shareOn() ? '● Sharing live' : 'Share live'}</button>` : ''}
+    ${voiceOK() ? '<button class="btn ghost sm" data-act="voicesheet">Voice settings</button>' : ''}
     ${g.status === 'ready' && g.period === 1 ? '<button class="btn ghost sm" data-act="back">Back to setup</button>' : ''}</div></section>
   <button class="btn stop big" data-act="endgame">End game</button>
   ${dockView(g)}`;
@@ -990,7 +999,7 @@ function summaryView(g) {
 function sheetView() {
   if (!ui.sheet) return '';
   return `<div class="scrim" data-act="sheetclose"><div class="sheet" role="dialog" aria-label="${esc(ui.sheet.title)}" data-stop="1"><h3>${esc(ui.sheet.title)}</h3>
-    ${ui.sheet.items.map((it, i) => it.head ? `<div class="shead">${esc(it.head)}</div>` : `<button class="btn" data-act="sheet" data-i="${i}" ${it.disabled ? 'disabled' : ''}><span>${esc(it.label)}${it.tag ? ` <span class="tag sug">${esc(it.tag)}</span>` : ''}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</button>`).join('')}
+    ${ui.sheet.items.map((it, i) => it.note ? `<p class="hint">${esc(it.note)}</p>` : it.head ? `<div class="shead">${esc(it.head)}</div>` : `<button class="btn" data-act="sheet" data-i="${i}" ${it.disabled ? 'disabled' : ''}><span>${esc(it.label)}${it.tag ? ` <span class="tag sug">${esc(it.tag)}</span>` : ''}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</button>`).join('')}
     <button class="btn ghost" data-act="sheetclose">${esc(ui.sheet.dismiss || 'Cancel')}</button></div></div>`;
 }
 function lockView() {
@@ -1003,6 +1012,8 @@ function lockView() {
 function render() {
   $('#app').innerHTML = (S.game ? gameView() : setupView()) + sheetView() + (ui.locked && S.game ? lockView() : '');
   updateTexts();
+  if ((!S.game || S.game.status === 'final') && (V.rec || V.hands)) voiceAbort(false);
+  voiceSync();
 }
 
 /* ============ sheets ============ */
@@ -1144,6 +1155,10 @@ function act(a, d) {
     case 'inaccept': inboxAccept(+d.i); break;
     case 'inreject': g.inbox.splice(+d.i, 1); break;
     case 'endgame': endGameSheet(); break;
+    case 'voice': voiceTap(); return;
+    case 'voicesheet': voiceSheet(); break;
+    case 'vwake': S.voice.wake = !S.voice.wake; break;
+    case 'vspeak': S.voice.speak = !S.voice.speak; break;
     case 'player': playerSheet(d.id); break;
     case 'hole': holeSheet(+d.i); break;
     case 'ourgoal': scorerSheet(); break;
@@ -1197,6 +1212,7 @@ function shareSnapshot() {
     bench: g.bench.filter(id => !g.p[id].out).map(nm), out: (g.sentOff || []).map(x => nm(x.id)),
     down: g.field.filter(x => !x).length, us: sc.us, them: sc.them,
     ev: g.events.map(e => [e.type, name(e.id), e.half, e.c]),
+    subs: g.log.filter(l => l.pairs).slice(0, 40).map(l => [l.half, l.c, l.ht ? 1 : 0, l.pairs.map(([o, n]) => [nm(o), nm(n)]), name(l.gk)]),   // newest first
   };
   return snap;
 }
@@ -1218,7 +1234,7 @@ async function shareFlush() {
   try {
     S.share.seq += 1; snap.seq = S.share.seq; persist();
     let text = await Share.sealState(S.share, snap);
-    if (text.length > 3800 && snap.game) { snap.game.ev = snap.game.ev.slice(-20); text = await Share.sealState(S.share, snap); }   // relay messages are limited to about 4 KB
+    if (text.length > 3800 && snap.game) { snap.game.ev = snap.game.ev.slice(-20); snap.game.subs = snap.game.subs.slice(0, 15); text = await Share.sealState(S.share, snap); }   // relay messages are limited to about 4 KB
     await Share.Relay.publish(S.share.relay, Share.topics(S.share.id).state, text);
     SH.sig = sig; SH.lastPub = Date.now(); SH.err = ''; clearTimeout(SH.retry);
     S.share.sent = (S.share.sent || []).filter(t => SH.lastPub - t < 864e5).concat(SH.lastPub).slice(-400); persist();   // the free relay allows about 250 a day
@@ -1325,6 +1341,371 @@ function shareSheet() {
   if (!shareOn()) { openSheet('Live sharing', [{ head: 'Sharing is off. Anyone you send a link to can follow the game.' }, { label: 'Start sharing', fn: () => { shareStart().then(render); } }]); return; }
   openSheet('Live sharing', [{ head: shareStatusText() }, { label: 'Share the watch link…', fn: () => shareNative('watch') }, { label: 'Share the scorer link…', fn: () => shareNative('scorer') },
     { head: 'Stop' }, { label: 'Stop sharing', fn: () => { shareStop().then(render); } }]);
+}
+
+/* ============ voice commands ============ */
+// Say it instead of tapping. Chrome turns speech into text (it sends the audio to Google's speech service unless the phone does
+// it on the device), and the commands below run the same actions as the buttons. Subs you say are only queued, never applied,
+// until you say "subs on". Red cards and ending a half ask you to say "confirm". "Undo" takes back the last thing you said.
+const SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
+const voiceOK = () => !!SRC;
+const V = { rec: null, mode: 'off', hands: false, armedUntil: 0, wait: null, last: null, speaking: false, restart: null, line: '', lineT: null, local: false };
+
+const VOICE_WORDS = new Set(('sub substitute swap put bring take pull send get for in on off out replaces replacing replace instead of to goal scored scores card red yellow coach hey okay then and the a by from ' +
+  'with is are gets got has needs rest now we they them us our team score time clock half pause resume undo yes no kick start game match second first confirm cancel nobody one unknown').split(' '));
+const normName = s => String(s).toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+function lev(a, b) {
+  const m = a.length, n = b.length; if (Math.abs(m - n) > 1) return 9;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i]); for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+// Finds roster names in what you said. A first name alone matches "Sam K". Names that sound close (one letter off) match too.
+function findMentions(tokens, g) {
+  const cands = [];
+  S.roster.filter(r => g.p[r.id]).forEach(r => {
+    const t = normName(r.name).split(' ').filter(Boolean);
+    if (!t.length) return;
+    cands.push({ id: r.id, toks: t });
+    if (t.length > 1) cands.push({ id: r.id, toks: [t[0]] });
+  });
+  const out = []; let i = 0;
+  while (i < tokens.length) {
+    let best = null;
+    for (const c of cands) {
+      const n = c.toks.length;
+      if (i + n <= tokens.length && c.toks.every((t, k) => tokens[i + k] === t)) {
+        if (!best || n > best.n) best = { n, ids: [c.id] }; else if (n === best.n && !best.ids.includes(c.id)) best.ids.push(c.id);
+      }
+    }
+    if (best) { out.push({ i, j: i + best.n, ids: best.ids }); i += best.n; continue; }
+    const t = tokens[i];
+    if (t.length >= 4 && t.endsWith('s') && !VOICE_WORDS.has(t)) {           // "Eli's" arrives as "elis"
+      const ids = [...new Set(cands.filter(c => c.toks.length === 1 && c.toks[0] === t.slice(0, -1)).map(c => c.id))];
+      if (ids.length) { out.push({ i, j: i + 1, ids }); i++; continue; }
+    }
+    if (t.length >= 4 && !VOICE_WORDS.has(t) && !/^\d+$/.test(t)) {
+      let bd = 2, ids = [];
+      for (const c of cands) if (c.toks.length === 1 && c.toks[0].length >= 4) { const d = lev(t, c.toks[0]); if (d < bd) { bd = d; ids = [c.id]; } else if (d === bd && !ids.includes(c.id)) ids.push(c.id); }
+      if (bd <= 1 && ids.length) { out.push({ i, j: i + 1, ids }); i++; continue; }
+    }
+    i++;
+  }
+  return out;
+}
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function voiceTemplate(text, g) {
+  let s = normName(text);
+  const opp = normName(S.share.opp || ''), team = normName(S.share.team || '');
+  if (opp.length > 2) s = s.replace(new RegExp('(^| )' + reEsc(opp) + '(?= |$)', 'g'), '$1them');
+  if (team.length > 2) s = s.replace(new RegExp('(^| )' + reEsc(team) + '(?= |$)', 'g'), '$1we');
+  const tokens = s.split(' ').filter(Boolean), ms = findMentions(tokens, g), out = [];
+  for (let i = 0, mi = 0; i < tokens.length;) { const m = ms[mi]; if (m && m.i === i) { out.push('@' + mi); mi++; i = m.j; } else { out.push(tokens[i]); i++; } }
+  return { s: out.join(' '), ms };
+}
+/** Turns what you said into an intent, or null. "@0", "@1" stand for the names, in the order you said them. */
+function parseVoice(text, g) {
+  const { s, ms } = voiceTemplate(text, g); if (!s) return null;
+  const mk = (t, o) => Object.assign({ t, ms }, o); let m;
+  if (/^(?:undo|undo that|scratch that|cancel that|never ?mind|take that back|oops)$/.test(s)) return mk('undo');
+  if (/^(?:yes|yeah|yep|yup|confirm|confirmed|do it|correct|affirmative|ok|okay)$/.test(s)) return mk('yes');
+  if (/^(?:no|nope|negative|stop|cancel)$/.test(s)) return mk('no');
+  if (/^(?:nobody|no one|own goal|not sure|unknown|dont know)$/.test(s)) return mk('unknown');
+  if (/^(?:kick ?off|start (?:the )?(?:game|match|half|second half|clock))$/.test(s)) return mk('clock', { cmd: 'kickoff' });
+  if (/^(?:pause|time ?out|stop the clock|pause the clock|hold the clock)$/.test(s)) return mk('clock', { cmd: 'pause' });
+  if (/^(?:resume|resume the clock|restart the clock|play on|unpause)$/.test(s)) return mk('clock', { cmd: 'resume' });
+  if (/^(?:end (?:the )?half|end first half|end of half|half ?time)$/.test(s)) return mk('clock', { cmd: 'endhalf' });
+  if (/^(?:the )?(?:subs?|substitutes?|they|theyre|both|all|everyone|those) ?(?:are |re )?(?:on|in)(?: now)?$/.test(s) || /^(?:on now|go ahead|ref waved them on|waved them on|subs go)$/.test(s)) return mk('subson');
+  if ((m = /^@(\d) (?:is |s )?(?:on|in)(?: now)?$/.exec(s))) return mk('on', { who: +m[1] });
+  // goals
+  if (/^(?:they|them|the other team|other team|opponents?|the opponents?) (?:scored|score|got one|got a goal)$/.test(s) || /^(?:a |another )?goal (?:for )?(?:them|they|the other team|opponents?)$/.test(s)) return mk('oppgoal');
+  if ((m = /(?:^| )@(\d) (?:has |just )?(?:scored|scores|got|gets)(?: a)?(?: goal)?(?: now)?$/.exec(s)) || (m = /^(?:a |another |nice )?goal (?:for |by |from )?@(\d)$/.exec(s)) || (m = /^@(\d) goal$/.exec(s))) return mk('goal', { who: +m[1] });
+  if (/^(?:we|our team|us) (?:scored|score|got one|got a goal)$/.test(s) || /^(?:a |another )?goal(?: for (?:us|we|our team))?$/.test(s)) return mk('goal', { who: null });
+  // cards
+  if ((m = /^(yellow|red) card (?:for |to |on )?@(\d)$/.exec(s))) return mk('card', { kind: m[1], who: +m[2] });
+  if ((m = /^@(\d) (?:gets |got |has |receives |with |sees )?(?:a )?(yellow|red)(?: card)?$/.exec(s))) return mk('card', { kind: m[2], who: +m[1] });
+  // subs. "sub Owen for Andrew" means Owen goes on, Andrew comes off.
+  if ((m = /^(?:please )?(?:sub|substitute|swap|put|bring|send) @(\d) (?:in |on )?(?:for|instead of|to replace) @(\d)$/.exec(s)) ||
+      (m = /^@(\d) (?:in|on|coming on|comes on|goes on|going on|is coming on|is going on) (?:for|instead of) @(\d)$/.exec(s)) ||
+      (m = /^@(\d) (?:replaces|replacing|for) @(\d)$/.exec(s)) ||
+      (m = /^@(\d) (?:in|on) @(\d) (?:off|out)$/.exec(s))) return mk('sub', { on: +m[1], off: +m[2] });
+  if ((m = /^(?:take|pull|bring|get|sub) @(\d) (?:off|out)(?: and| for| then)?(?: put| bring| sub| send)? ?@(\d)(?: in| on)?$/.exec(s)) ||
+      (m = /^@(\d) (?:off|out|comes off|coming off|goes off|going off)(?: and| for| then)? ?@(\d)(?: in| on| comes on| goes on| coming on)?$/.exec(s))) return mk('sub', { on: +m[2], off: +m[1] });
+  if ((m = /^(?:sub|take|pull|get|send) @(\d) (?:off|out)$/.exec(s)) || (m = /^@(\d) (?:off|out|needs a rest|is tired|comes off|coming off)$/.exec(s))) return mk('subOff', { off: +m[1] });
+  if ((m = /^(?:sub|put|bring|send|get) @(\d) (?:in|on)$/.exec(s))) return mk('subOn', { on: +m[1] });
+  // asking
+  if (/^(?:whats |what is |tell me |read )?(?:the )?score$/.test(s)) return mk('score');
+  if (/^(?:whats |what is )?(?:the )?(?:time|clock)$/.test(s)) return mk('time');
+  if (/^(?:whos |who is )?(?:due|next)(?: up)?$/.test(s) || /^(?:suggest|suggestions?|next sub|who should (?:i )?(?:sub|come off|go off|sub off))$/.test(s)) return mk('due');
+  if ((m = /^@(\d)$/.exec(s))) return mk('name', { who: +m[1] });
+  return null;
+}
+
+function voiceSpeak(text) {
+  if (!S.voice.speak || !('speechSynthesis' in window) || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; V.speaking = true;
+    const done = () => { setTimeout(() => { V.speaking = false; }, 500); };      // ignore the app's own voice for a moment
+    u.onend = done; u.onerror = done;
+    speechSynthesis.speak(u);
+  } catch (e) { V.speaking = false; }
+}
+function voiceLine(text, ms) {
+  V.line = text || ''; clearTimeout(V.lineT);
+  if (text && ms) V.lineT = setTimeout(() => { V.line = ''; voiceSync(); }, ms);
+  voiceSync();
+}
+function voiceSync() {
+  const mic = document.querySelector('.vmic'), line = document.getElementById('vline');
+  if (mic) { mic.classList.toggle('on', V.hands); mic.classList.toggle('listen', V.mode !== 'off'); }
+  if (line) {
+    const t = V.line || (V.hands ? (S.voice.wake ? 'Hands-free is on. Say “Coach”, then your command.' : 'Hands-free is on. Listening.') : '');
+    line.textContent = t; line.hidden = !t;
+  }
+}
+function voiceSay(say, heard, bad) {
+  voiceLine('🎤 “' + heard + '”  →  ' + say, 8000);
+  voiceSpeak(say);
+}
+
+function voiceAbort(keepHands) {
+  if (!keepHands) V.hands = false;
+  clearTimeout(V.restart);
+  const r = V.rec; V.rec = null; V.mode = 'off';
+  if (r) { r.onend = null; r.onresult = null; r.onerror = null; try { r.abort(); } catch (e) {} }
+  voiceSync();
+}
+function voiceStart(mode) {
+  if (!SRC) { voiceLine('Voice commands need Chrome on Android.', 5000); return false; }
+  voiceAbort(true);
+  const rec = new SRC();
+  rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = mode === 'hands'; rec.maxAlternatives = 3;
+  rec.onstart = () => { V.mode = mode; voiceSync(); };
+  rec.onresult = e => voiceResult(e, mode);
+  rec.onerror = e => voiceError(e && e.error);
+  rec.onend = () => {
+    const current = V.rec === rec;
+    if (current) { V.rec = null; V.mode = 'off'; }
+    voiceSync();
+    if (current && V.hands && S.game && S.game.status !== 'final') {                 // Chrome stops listening every so often, so start again
+      clearTimeout(V.restart); V.restart = setTimeout(() => { if (V.hands && !V.rec) voiceStart('hands'); }, 500);
+    }
+  };
+  V.rec = rec; if (mode === 'hands') V.hands = true;
+  try { rec.start(); } catch (e) { V.rec = null; return false; }
+  return true;
+}
+function voiceError(code) {
+  if (code === 'no-speech' || code === 'aborted') return;
+  if (code === 'not-allowed' || code === 'service-not-allowed') { voiceAbort(false); voiceLine('The microphone is blocked. In Chrome open ⋮ → Settings → Site settings → Microphone, allow it for this site, then try again.', 10000); }
+  else if (code === 'network') { voiceAbort(false); voiceLine('Voice needs an internet connection right now. Hands-free is off.', 7000); }
+  else { voiceAbort(false); voiceLine('Voice stopped (' + code + ').', 5000); }
+}
+function voiceTap() {
+  if (!SRC) { voiceLine('Voice commands need Chrome on Android.', 5000); return; }
+  if (V.hands) { voiceAbort(false); voiceLine('Hands-free is off.', 3000); return; }
+  if (V.mode === 'once') { voiceAbort(false); voiceLine('', 0); return; }
+  try { speechSynthesis.cancel(); } catch (e) {}          // you tapped, so you want to talk now: stop the reply that was playing
+  V.speaking = false;
+  voiceStart('once'); voiceLine('🎤 Listening… say a command', 9000);
+}
+function voiceHandsToggle() {
+  if (V.hands) { voiceAbort(false); voiceLine('Hands-free is off.', 3000); }
+  else if (voiceStart('hands')) voiceLine('', 0);                   // the clock bar then shows how to talk to it
+}
+function voiceResult(e, mode) {
+  if (V.speaking) return;
+  for (let i = e.resultIndex; i < e.results.length; i++) {
+    const r = e.results[i], alts = [];
+    for (let k = 0; k < r.length; k++) if (r[k] && r[k].transcript && r[k].transcript.trim()) alts.push(r[k].transcript.trim());
+    if (!alts.length) continue;
+    if (!r.isFinal) { if (mode === 'once') voiceLine('🎤 ' + alts[0]); continue; }
+    voiceHeard(alts, mode);
+  }
+}
+const stripWake = t => { const m = /^(?:hey |hi |ok |okay )?coach\b[ ,.:!?-]*(.*)$/i.exec(String(t).trim()); return m ? { woke: true, rest: m[1].trim() } : { woke: false, rest: String(t).trim() }; };
+function voiceHeard(alts, mode) {
+  const g = S.game; if (!g || g.status === 'final') return;
+  let addressed = mode === 'once';                                  // only then do we complain about things we did not understand
+  if (mode === 'hands' && S.voice.wake) {                          // only act on "Coach, ..." so side chatter is ignored
+    const w = stripWake(alts[0]), armed = Date.now() < V.armedUntil;
+    if (w.woke) {
+      addressed = true;
+      if (!w.rest) { V.armedUntil = Date.now() + 8000; beep('soon'); voiceLine('🎤 Yes, coach? Say your command.', 8000); return; }
+      alts = alts.map(a => stripWake(a).rest || a);
+    } else if (armed) { addressed = true; V.armedUntil = 0; }
+    else return;
+  }
+  voiceRun(alts, addressed);
+}
+/** Runs a command from text. Also what the tests call. Returns what the app said. */
+function voiceRun(alts, addressed) {
+  const g = S.game; if (!g || g.status === 'final') return null;
+  alts = [].concat(alts);
+  let pick = null;
+  for (const a of alts) { const p = parseVoice(a, g); if (p) { pick = { text: a, p }; break; } }
+  const heard = pick ? pick.text : alts[0];
+  if (!pick) {
+    if (V.wait && Date.now() < V.wait.until) { V.wait = null; save(); voiceSay('Cancelled.', heard); return { say: 'Cancelled.' }; }
+    if (addressed) { voiceSay('I did not understand “' + heard + '”.', heard); return { say: 'I did not understand.', ok: false }; }
+    return null;
+  }
+  let res;
+  try { res = voiceDo(pick.p, g); } catch (err) { res = { say: 'Something went wrong with that command.', ok: false }; }
+  save(); render();
+  voiceSay(res.say, heard);
+  return res;
+}
+function voiceDo(p, g) { try { return voiceDoInner(p, g); } catch (e) { if (e && e.say) return e; throw e; } }
+function voiceDoInner(p, g) {
+  const fail = say => ({ say, ok: false });
+  const who = mi => {
+    const m = p.ms[+mi];
+    if (!m) throw fail('I did not catch the name.');
+    if (m.ids.length > 1) throw fail('There is more than one ' + nm(m.ids[0]) + '. Use the first and last name.');
+    return m.ids[0];
+  };
+  const w = V.wait && Date.now() < V.wait.until ? V.wait : null; V.wait = null;
+  if (w) {
+    if (p.t === 'yes' && w.kind !== 'scorer') return w.run();
+    if (w.kind === 'scorer') { if (p.t === 'name') return voiceGoal(g, who(p.who)); if (p.t === 'unknown') return voiceGoal(g, ''); return { say: 'Cancelled.' }; }
+    if (p.t === 'no' || p.t === 'undo') return { say: 'Cancelled.' };
+  }
+  const direct = g.status === 'ready';
+  switch (p.t) {
+    case 'yes': return fail('There is nothing to confirm.');
+    case 'no': return { say: 'OK.' };
+    case 'unknown': return fail('Say what to do, for example “Owen scored”.');
+    case 'name': return fail('Say what to do with ' + nm(who(p.who)) + ', for example “' + nm(who(p.who)) + ' scored”.');
+    case 'sub': return voiceSub(g, who(p.on), who(p.off), false);
+    case 'subOff': {
+      const off = who(p.off), on = rankLists(g).ons[0];
+      if (!on) return fail('Nobody is free on the bench.');
+      return voiceSub(g, on, off, 'on');
+    }
+    case 'subOn': {
+      const on = who(p.on), off = rankLists(g).offs.find(id => id !== g.gk);
+      if (!off) return fail('There is nobody to take off.');
+      return voiceSub(g, on, off, 'off');
+    }
+    case 'subson': {
+      cleanQueue(g);
+      if (!g.queue.length && !(g.gkNext && g.field.includes(g.gkNext))) return fail('Nothing is waiting to go on.');
+      const said = g.queue.map(q => nm(q.on) + ' on for ' + nm(q.off)).join('. ');
+      goOn('all');
+      const len = g.hist.length;
+      V.last = { undo: () => (g.hist.length === len ? (undo(), 'Subs undone.') : 'Too late to undo that by voice. Use Undo last change.') };
+      return { say: 'Subs on. ' + said + '.' };
+    }
+    case 'on': {
+      const id = who(p.who); cleanQueue(g);
+      const i = g.queue.findIndex(q => q.on === id);
+      if (i < 0) return fail(nm(id) + ' is not waiting to go on.');
+      const off = g.queue[i].off; goOn(i);
+      const len = g.hist.length;
+      V.last = { undo: () => (g.hist.length === len ? (undo(), 'Sub undone.') : 'Too late to undo that by voice. Use Undo last change.') };
+      return { say: nm(id) + ' on for ' + nm(off) + '.' };
+    }
+    case 'goal':
+      if (p.who === null || p.who === undefined) { V.wait = { kind: 'scorer', until: Date.now() + 10000 }; return { say: 'Who scored?' }; }
+      return voiceGoal(g, who(p.who));
+    case 'oppgoal': {
+      addEvent(g, 'opp', ''); const ev = g.events[g.events.length - 1], sc = scoreOf(g);
+      V.last = { undo: () => { removeEvent(g, ev); return 'Goal removed.'; } };
+      return { say: 'They scored. ' + sc.us + ' to ' + sc.them + '.' };
+    }
+    case 'card': {
+      const id = who(p.who);
+      if (g.p[id].out && g.events.some(e => e.type === 'red' && e.id === id)) return fail(nm(id) + ' has already been sent off.');
+      if (p.kind === 'yellow') {
+        addEvent(g, 'yellow', id); const ev = g.events[g.events.length - 1];
+        V.last = { undo: () => { removeEvent(g, ev); return 'Yellow card removed.'; } };
+        return { say: 'Yellow card, ' + nm(id) + '.' };
+      }
+      V.wait = { kind: 'red', until: Date.now() + 10000, run: () => {
+        addEvent(g, 'red', id); const ev = g.events[g.events.length - 1];
+        V.last = { undo: () => { removeEvent(g, ev); return 'Red card taken back.'; } };
+        return { say: 'Red card, ' + nm(id) + ' is off. You are playing a man down.' };
+      } };
+      return { say: 'Red card for ' + nm(id) + '. They leave the field and you play a man down. Say confirm.' };
+    }
+    case 'clock': {
+      if (p.cmd === 'kickoff') { if (g.status !== 'ready') return fail('The clock is already going.'); const second = g.period === 2; startClock(); return { say: second ? 'Second half.' : 'Kick off.' }; }
+      if (p.cmd === 'pause') { if (g.status !== 'running') return fail('The clock is not running.'); pauseClock(); return { say: 'Paused.' }; }
+      if (p.cmd === 'resume') { if (g.status !== 'paused') return fail('The clock is not paused.'); startClock(); return { say: 'Resumed.' }; }
+      if (g.status !== 'running' && g.status !== 'paused') return fail('There is no half to end right now.');
+      V.wait = { kind: 'endhalf', until: Date.now() + 10000, run: () => { endHalf(); return { say: 'Half ended.' }; } };
+      return { say: 'End the half? Say confirm.' };
+    }
+    case 'score': {
+      const sc = scoreOf(g);
+      return { say: sc.us === sc.them ? 'Tied, ' + sc.us + ' all.' : sc.us > sc.them ? 'We lead ' + sc.us + ' to ' + sc.them + '.' : 'We trail ' + sc.us + ' to ' + sc.them + '.' };
+    }
+    case 'time': {
+      const c = clockMs(g);
+      return { say: Math.floor(c / 60000) + ' minutes ' + (Math.floor(c / 1000) % 60) + ' seconds into the ' + (g.period === 1 ? 'first' : 'second') + ' half.' };
+    }
+    case 'due': {
+      const pairs = suggestPairs(g, 2);
+      return { say: pairs.length ? 'Suggested: ' + pairs.map(([o, n]) => nm(o) + ' off, ' + nm(n) + ' on').join('. ') + '.' : 'Playing time is even right now.' };
+    }
+    case 'undo': {
+      if (!V.last) return fail('There is nothing to undo.');
+      const r = V.last.undo(); V.last = null;
+      return { say: typeof r === 'string' ? r : 'Undone.' };
+    }
+  }
+  return fail('I did not understand that.');
+}
+function voiceGoal(g, id) {
+  addEvent(g, 'goal', id); const ev = g.events[g.events.length - 1], sc = scoreOf(g);
+  V.last = { undo: () => { removeEvent(g, ev); return 'Goal removed.'; } };
+  return { say: 'Goal' + (id ? ', ' + nm(id) : '') + '. ' + sc.us + ' to ' + sc.them + '.' };
+}
+// "Sub Owen for Andrew": Owen on, Andrew off. If that is impossible but the reverse works (said the other way round), use the reverse and say so.
+function voiceSub(g, on, off, auto) {
+  const inF = id => g.field.includes(id), inB = id => g.bench.includes(id);
+  let flipped = false;
+  if (inF(on) && inB(off)) { [on, off] = [off, on]; flipped = true; }
+  if (inF(on) && inF(off)) return { say: nm(on) + ' and ' + nm(off) + ' are both on the field.', ok: false };
+  if (inB(on) && inB(off)) return { say: nm(on) + ' and ' + nm(off) + ' are both on the bench.', ok: false };
+  if (!inF(off) || !inB(on)) return { say: 'I could not match that to the field and the bench.', ok: false };
+  if (g.p[on].out) return { say: nm(on) + ' is not available.', ok: false };
+  const direct = g.status === 'ready';
+  if (direct) { directSwap(off, on); const len = g.hist.length; V.last = { undo: () => (g.hist.length === len ? (undo(), 'Sub undone.') : 'Too late to undo that by voice. Use Undo last change.') }; }
+  else {
+    queueAdd(g, off, on, false);
+    const entry = g.queue.find(q => q.off === off && q.on === on);
+    V.last = { undo: () => { g.queue = g.queue.filter(q => q !== entry); cleanQueue(g); return 'Sub cancelled.'; } };
+  }
+  return { say: nm(on) + ' on for ' + nm(off) + '.' + (flipped ? ' I flipped the order.' : '') + (auto === 'on' ? ' I picked ' + nm(on) + ' to come on.' : auto === 'off' ? ' I picked ' + nm(off) + ' to come off.' : '') + (direct ? ' Done.' : ' Waiting for the ref.') };
+}
+const VOICE_EXAMPLES = [
+  '“Sub Owen for Andrew”: Owen goes on, Andrew comes off. It waits at the half line.',
+  '“Sub Andrew off”: the app picks who comes on (least played).',
+  '“Subs on”, or “Owen’s on”: the ref waved them on, so play time changes now.',
+  '“Owen scored”, “They scored”, “We scored” (then say who).',
+  '“Yellow card Jack”, “Red card Max” (a red card asks you to say confirm).',
+  '“Pause”, “Resume”, “Kick off”, “End half” (asks you to say confirm).',
+  '“Who is due”, “Score”, “Time”.',
+  '“Undo” or “Scratch that”: takes back the last thing you said.',
+];
+function voiceSheet() {
+  openSheet('Voice commands', [
+    { head: 'Settings' },
+    { label: 'Hands-free listening: ' + (V.hands ? 'ON' : 'off'), sub: V.hands ? 'tap to turn off' : 'tap to turn on', fn: () => voiceHandsToggle() },
+    { label: 'Wake word “Coach”: ' + (S.voice.wake ? 'on' : 'off'), sub: S.voice.wake ? 'say Coach first' : 'acts on anything it hears', fn: () => { S.voice.wake = !S.voice.wake; } },
+    { label: 'Speak replies: ' + (S.voice.speak ? 'on' : 'off'), fn: () => { S.voice.speak = !S.voice.speak; } },
+    { head: 'Things you can say' }, ...VOICE_EXAMPLES.map(t => ({ note: t })),
+    { note: 'Chrome sends what you say to Google to turn it into text, so it needs signal. With hands-free on, begin with “Coach”, for example “Coach, sub Owen for Andrew”.' }]);
+}
+function voiceCard() {
+  if (!voiceOK()) return `<section class="card"><h2>Voice commands</h2><p class="hint">Voice commands need Chrome on Android. This browser cannot do speech recognition.</p></section>`;
+  return `<section class="card"><h2>Voice commands</h2>
+    <p class="hint">Talk to the app instead of tapping, for example with an earbud in: “Sub Owen for Andrew”, “Owen scored”, “Subs on”. Tap the 🎤 on the game screen for one command, or turn on hands-free under Voice settings and start with “Coach”.</p>
+    <div class="row"><button class="btn${S.voice.wake ? ' primary' : ''}" data-act="vwake">Wake word “Coach”: ${S.voice.wake ? 'on' : 'off'}</button><button class="btn${S.voice.speak ? ' primary' : ''}" data-act="vspeak">Speak replies: ${S.voice.speak ? 'on' : 'off'}</button></div>
+    <p class="hint">Chrome sends what you say to Google’s speech service to turn it into text, so it needs signal. The app keeps only the text. The microphone is on only while you are listening or hands-free is on. A sub you say waits for “subs on”, and red cards and ending a half ask you to say confirm.</p></section>`;
 }
 
 /* ============ boot ============ */

@@ -52,7 +52,7 @@ Parents can follow a game on their own phones, and one trusted person can send y
 
 **Set it up.** On the setup screen, open **Live sharing**, optionally type your team name and the opponent, and tap **Start sharing**. You get two links:
 
-- **Watch link** (for parents). Read only. Shows the clock, score, who is playing where, the bench, and goals and cards. It does not show minutes played or sub suggestions.
+- **Watch link** (for parents). Read only. Shows the clock, score, who is playing where, the bench, and a game log of subs (▼ off, ▲ on), goals and cards. It cannot make or change anything. It does not show minutes played, the waiting-at-the-half-line box, or sub suggestions.
 - **Scorer link** (for one trusted person). Same view plus **We scored** and **They scored** buttons. Their taps arrive on your phone as **Score suggestions** with the minute they saw. Nothing changes until you tap **Accept**, and **Reject** drops it.
 
 Send the links with **Share…** or **Copy**. The same links work for every game that day. **Make new links** replaces both (the old ones stop working) and **Stop sharing** tells watchers sharing has ended. During a game, the **Share live** button next to Undo shows the status.
@@ -64,3 +64,29 @@ Send the links with **Share…** or **Copy**. The same links work for every game
 **Bad signal.** The app works as normal without a connection and tells you when the relay cannot be reached. It sends again when the connection returns. Watchers' clocks run on their own between updates, so very little is sent: a message when something visible changes (kickoff, pause, a sub, a goal, a card) plus one every 10 minutes while the clock runs. I expect roughly 40 to 60 messages a game, but that is an estimate, not a measurement.
 
 **The free relay's limit.** ntfy.sh allows each internet address 250 messages a day (I checked its published limits) and keeps messages for 12 hours. Your phone's address is shared with whoever else is on the same mobile connection, and it counts every message you send that day, so two or three games fit but a long tournament day might not. The **Live sharing** card shows how many messages you have sent in the last 24 hours. If the limit is reached the app says so, watchers stop getting updates until it resets, and the game itself is never affected. A scorer's taps count against the scorer's own phone, not yours. You can point the app at your own ntfy server under **Relay server** before you start sharing.
+
+## Voice commands (beta)
+
+Talk to the app instead of tapping, for example with an earbud in while you coach.
+
+**Two ways to use it.** Tap the 🎤 next to Lock for one command. Or open **Voice settings** (under the game log) and turn on **Hands-free**: the mic turns red and the app keeps listening. With the wake word on (the default) it only acts after you say "Coach", so side chatter is ignored: "Coach, sub Owen for Andrew". You can also say just "Coach", wait for the reply, then say the command.
+
+**What you can say.**
+
+- **Subs:** "Sub Owen for Andrew" means Owen goes on and Andrew comes off. Also "Owen in for Andrew", "Andrew off, Owen on", "Take Andrew off for Owen". "Sub Andrew off" lets the app pick who comes on (least played), and "Sub Owen in" lets it pick who goes off. A spoken sub is queued at the half line like a tapped one. If you say it the other way round and only the reverse is possible, the app uses the reverse and tells you.
+- **The ref waves them on:** "Subs on" (or "They're on", "All on") applies everything waiting right now. "Owen's on" applies just that sub.
+- **Goals:** "Owen scored", "They scored", "We scored" (it asks who).
+- **Cards:** "Yellow card Jack". "Red card Max" asks you to say **confirm** before it sends the player off. "Cancel" drops it.
+- **Clock:** "Kick off", "Pause", "Resume", "End half" (asks you to say confirm).
+- **Questions:** "Score", "Time", "Who's due" are read out.
+- **Undo:** "Undo" or "Scratch that" takes back the last thing you said (a goal, a card, a queued sub, or the last "subs on").
+
+**Safety.** The app reads back what it understood ("Owen on for Andrew. Waiting for the ref."). Nothing you say changes play time until you say "subs on" or tap On. It does not guess a name it did not recognise, and if two kids share a first name it asks for the full name. It never ends the whole game by voice; use the red End game button.
+
+**Things to know.**
+
+- Chrome turns your speech into text by sending the audio to Google's speech service, so it needs signal. The app keeps only the text. The microphone is on only while you are listening or hands-free is on.
+- It works through Bluetooth earbuds when they are your phone's active microphone. The first time, Chrome asks for microphone permission; if you said no, allow it under Chrome ⋮ → Settings → Site settings → Microphone.
+- Wind, kids and traffic will cost accuracy. Names are matched to your roster, and a name that is one letter off still matches.
+- Chrome ends hands-free listening every so often; the app starts it again by itself, which may make a small sound on some phones.
+- This is a beta: it was tested with a simulated speech recognizer, not with real voices on a real phone.
