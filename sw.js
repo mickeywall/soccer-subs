@@ -1,5 +1,5 @@
 /* Sideline Subs service worker: offline cache + notification button taps (from phone or Pixel Watch). */
-const CACHE = 'sideline-subs-v3';
+const CACHE = 'sideline-subs-v4';
 const ASSETS = ['./', './index.html', './share.js', './watch.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

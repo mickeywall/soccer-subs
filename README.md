@@ -12,6 +12,16 @@ On the Pixel: open that address in Chrome, menu → **Install app** (or Add to H
 
 To update: change the files on `main`. The installed app picks up the new version the next time you open it with signal.
 
+## Several teams
+
+If you coach more than one team, or kids move between teams, tap **Set up teams** at the top of setup. Your current roster becomes the first team. **+ Team** adds another, and the **Rename or delete this team** button changes its name. All the kids live in one pool, and each team is a list from that pool, so a kid can be on more than one team.
+
+- Tap a team's name to switch to it. Only that team's kids are on the roster, and goalies you picked are remembered per team.
+- **Borrow a player from another team** brings a kid in for today as a "guest". Tap any name on the roster to choose which teams they are on for good, rename them, or delete them.
+- The ✕ on a team's roster takes the kid off that team; they stay in the pool and on their other teams.
+- Minutes played, game results and tournament totals are kept per team, so a kid who played for the other team starts at zero here and a borrowed kid is not treated as already tired.
+- Everything is stored on the phone. If you clear the browser's data for the site you lose it.
+
 ## Game day
 
 1. Roster: add names, untick anyone who is absent.

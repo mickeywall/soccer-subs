@@ -66,6 +66,11 @@ input[type=text]{flex:1;min-width:0}
 .rrow{display:grid;grid-template-columns:44px 1fr auto 40px;align-items:center;gap:8px;min-height:40px;border-top:1px solid var(--line)}
 .rrow:first-of-type{border-top:0}
 .rn{font-weight:600;overflow-wrap:anywhere}
+.rn.tap{cursor:pointer;text-decoration:underline dotted var(--line);text-underline-offset:3px}
+.gtag{font-size:.7rem;font-weight:700;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle}
+.tchips{display:flex;flex-wrap:wrap;gap:8px}
+.tchips .btn{min-height:44px;padding:8px 14px}
+.tchips .btn.cur{background:var(--pitch);color:var(--pitch-ink);border-color:transparent}
 .rt{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:.9rem}
 .chk{width:34px;height:34px;border-radius:10px;border:2px solid var(--line);background:var(--surface);font-weight:800;color:var(--pitch-ink);touch-action:manipulation}
 .chk.on{background:var(--pitch);border-color:var(--pitch)}
@@ -213,7 +218,9 @@ const fmt = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return String(
 const fmtShort = ms => fmt(ms).replace(/^0/, '');
 
 const DEFAULT = () => ({
-  roster: [],                                   // {id, name, here, tot}  tot = tournament ms played
+  roster: [],                                   // everyone in the pool: {id, name, here, tot, tots}  tot = tournament ms played for the active team
+  teams: [],                                    // {id, name, ids[], gks[], results[], games}  a player can be on several teams
+  team: '',                                     // id of the active team ('' = no teams set up)
   cfg: { halfMin: 22, onField: 7, subsPerHalf: 3, swaps: 0, warnSec: 30, formation: '2-3-1' },   // swaps 0 = auto
   setup: { lineup: [], starters: [], gks: [], edited: false },   // lineup = starters by pitch slot (slot 0 = GK); gks = goalie pool
   sound: true,
@@ -236,7 +243,7 @@ function load() {
 let S = load();
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 const save = () => { persist(); sharePing(); };
-const ui = { addText: '', sheet: null, locked: false, confirm: null, alertMsg: '' };
+const ui = { teamEdit: false, addText: '', sheet: null, locked: false, confirm: null, alertMsg: '' };
 
 const R = id => S.roster.find(p => p.id === id);
 const nm = id => (R(id) || {}).name || '?';
@@ -789,12 +796,100 @@ function benchSheet(id) {                 // a kid who is not starting: pick the
   const s = S.setup, F = FORMATIONS[S.cfg.formation] || FORMATIONS['2-3-1'];
   openSheet('Where does ' + nm(id) + ' start?', [{ head: 'Pick a position' }, ...s.lineup.map((o, i) => ({ label: F[i][0], sub: o ? 'replaces ' + nm(o) : 'empty', fn: () => placeStarter(i, id) }))]);
 }
+/* ---- teams: a pool of players, several rosters that can share players ---- */
+const TEAM = () => S.teams.find(t => t.id === S.team) || null;
+const memberOf = (r, t) => !!t && t.ids.includes(r.id);
+function stashTeam() {                       // keep this team's own totals and results
+  const t = TEAM(); if (!t) return;
+  t.results = S.results || []; t.games = S.games || 0;
+  S.roster.forEach(r => { (r.tots = r.tots || {})[t.id] = r.tot || 0; });
+}
+function switchTeam(id) {
+  const t = S.teams.find(x => x.id === id); if (!t) return;
+  stashTeam();
+  S.team = id; S.results = t.results || []; S.games = t.games || 0;
+  S.roster.forEach(r => { r.tot = (r.tots && r.tots[id]) || 0; r.here = t.ids.includes(r.id); });
+  S.setup = { lineup: [], starters: [], gks: [...(t.gks || [])], edited: false };
+  if (!shareOn()) S.share.team = t.name;
+}
+function addTeam() {
+  const first = !S.teams.length;
+  const t = { id: uid(), name: 'Team ' + (S.teams.length + 1), ids: first ? S.roster.map(r => r.id) : [], gks: first ? [...S.setup.gks] : [], results: first ? (S.results || []) : [], games: first ? (S.games || 0) : 0 };
+  if (first) { S.teams.push(t); S.team = t.id; if (!shareOn() && !S.share.team) S.share.team = t.name; }
+  else { S.teams.push(t); switchTeam(t.id); }
+}
+function removeTeam(id) {
+  const t = S.teams.find(x => x.id === id); if (!t) return;
+  if (S.team === id) { const next = S.teams.find(x => x.id !== id); if (next) switchTeam(next.id); else { stashTeam(); S.team = ''; } }
+  S.teams = S.teams.filter(x => x.id !== id);
+  S.roster.forEach(r => { if (r.tots) delete r.tots[id]; });
+}
+function removeFromTeam(id) {
+  const t = TEAM(); if (!t) return;
+  t.ids = t.ids.filter(x => x !== id); t.gks = (t.gks || []).filter(x => x !== id);
+  const r = R(id); if (r) r.here = false;
+  S.setup.gks = S.setup.gks.filter(x => x !== id); S.setup.edited = false;
+}
 function addPlayers(text) {
-  text.split(/[\n,;]+/).map(t => t.trim()).filter(Boolean).forEach(name => S.roster.push({ id: uid(), name, here: true, tot: 0 }));
+  const t = TEAM();
+  text.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean).forEach(name => {
+    const r = { id: uid(), name, here: true, tot: 0 };
+    S.roster.push(r); if (t) t.ids.push(r.id);
+  });
+}
+function playerTeamsSheet(id) {               // which teams this kid is on
+  const r = R(id); if (!r) return;
+  const items = [{ head: 'Teams' }];
+  S.teams.forEach(t => {
+    const inn = t.ids.includes(id);
+    items.push({ label: (inn ? '✓ ' : '') + t.name, sub: inn ? 'tap to remove' : 'tap to add', fn: () => {
+      if (inn) { if (t.id === S.team) removeFromTeam(id); else { t.ids = t.ids.filter(x => x !== id); t.gks = (t.gks || []).filter(x => x !== id); } }
+      else { t.ids.push(id); if (t.id === S.team) r.here = true; }
+      S.setup.edited = false; playerTeamsSheet(id);
+    } });
+  });
+  items.push({ head: 'Player' });
+  items.push({ label: 'Rename', fn: () => { const v = (prompt('Rename player', r.name) || '').trim(); if (v) r.name = v.slice(0, 24); } });
+  items.push({ label: 'Delete from everywhere', fn: () => { if (confirm('Delete ' + r.name + ' from every team? Their minutes are lost.')) deletePlayer(id); else playerTeamsSheet(id); } });
+  openSheet(r.name, items, 'Done');
+}
+function deletePlayer(id) {
+  S.roster = S.roster.filter(r => r.id !== id);
+  S.teams.forEach(t => { t.ids = t.ids.filter(x => x !== id); t.gks = (t.gks || []).filter(x => x !== id); });
+  S.setup.gks = S.setup.gks.filter(x => x !== id); S.setup.lineup = S.setup.lineup.map(x => x === id ? '' : x); S.setup.edited = false;
+}
+function borrowSheet() {                      // pull a kid from another team in for today
+  const t = TEAM(); if (!t) return;
+  const others = S.roster.filter(r => !r.here && !t.ids.includes(r.id));
+  const tname = r => S.teams.filter(x => x.ids.includes(r.id)).map(x => x.name).join(', ') || 'No team';
+  const sorted = [...others].sort((a, b) => tname(a).localeCompare(tname(b)) || a.name.localeCompare(b.name));
+  if (!sorted.length) { openSheet('Borrow a player', [{ note: 'Everyone else is already here. Add new names below, or put kids on other teams first.' }], 'Close'); return; }
+  openSheet('Borrow a player for today', [{ note: 'They join this game only. Tap a name on the roster later to add them to the team for good.' }, ...sorted.map(r => ({ label: r.name, sub: tname(r), fn: () => { r.here = true; S.setup.edited = false; } }))], 'Cancel');
 }
 const SAMPLE = ['Liam', 'Noah', 'Mason', 'Ethan', 'Lucas', 'Jack', 'Owen', 'Eli', 'Max', 'Sam'];
 
 /* ============ views ============ */
+function rosterRows() {
+  const t = TEAM();
+  return t ? S.roster.filter(r => t.ids.includes(r.id) || r.here) : S.roster;
+}
+function rrowHtml(r) {
+  const t = TEAM(), guest = t && !t.ids.includes(r.id);
+  const nameHtml = t ? `<span class="rn tap" data-act="rplayer" data-id="${r.id}">${esc(r.name)}${guest ? '<span class="gtag">guest</span>' : ''}</span>` : `<span class="rn">${esc(r.name)}</span>`;
+  const why = !t ? 'Remove ' : guest ? 'Send back ' : 'Take off this team: ';
+  return `<div class="rrow"><button class="chk${r.here ? ' on' : ''}" data-act="here" data-id="${r.id}" aria-label="${esc(r.name)} is here">${r.here ? '✓' : ''}</button>${nameHtml}<span class="rt">${r.tot ? fmtShort(r.tot) + ' played' : ''}</span><button class="x" data-act="del" data-id="${r.id}" aria-label="${why}${esc(r.name)}">✕</button></div>`;
+}
+function teamCard() {
+  if (!S.teams.length) return `<section class="card"><h2>Teams</h2><p class="hint">Coach more than one team, or have kids move between teams? Set up teams to keep a roster for each one and borrow kids from the others.</p><button class="btn sm" data-act="teamadd">Set up teams</button></section>`;
+  const t = TEAM();
+  return `<section class="card"><h2>Teams</h2>
+    <div class="tchips">${S.teams.map(x => `<button class="btn${x.id === S.team ? ' cur' : ''}" data-act="team" data-id="${x.id}" aria-pressed="${x.id === S.team}">${esc(x.name)}</button>`).join('')}<button class="btn ghost" data-act="teamadd" aria-label="Add a team">+ Team</button></div>
+    <p class="hint">${esc(t.name)}: ${t.ids.length} on the roster${S.roster.some(r => r.here && !t.ids.includes(r.id)) ? ', plus guests today' : ''}. Minutes played and results are kept for each team separately.</p>
+    <button class="btn ghost sm" data-act="teamedit">${ui.teamEdit ? 'Done' : 'Rename or delete this team'}</button>
+    ${ui.teamEdit ? `<div class="field-row"><label for="teamName">Team name</label><input type="text" id="teamName" value="${esc(t.name)}" maxlength="24"></div>
+    <button class="btn danger sm" data-act="teamdel">${ui.confirm === 'teamdel' ? 'Tap again to delete ' + esc(t.name) : 'Delete this team'}</button><p class="hint">Deleting a team keeps the players; they just are not on it any more.</p>` : ''}
+  </section>`;
+}
 function stepper(key, label, val, d, suffix) {
   return `<div class="field-row"><label>${label}</label><div class="stepper"><button class="btn" data-act="cfg" data-k="${key}" data-d="${-d}" aria-label="Less">−</button><b>${val}${suffix || ''}</b><button class="btn" data-act="cfg" data-k="${key}" data-d="${d}" aria-label="More">+</button></div></div>`;
 }
@@ -834,12 +929,15 @@ function setupView() {
   return `
   <div class="top"><h1>Sideline Subs</h1><span class="hint">${n} here · ${bench} on bench</span></div>
 
+  ${teamCard()}
+
   <section class="card"><h2>Roster</h2>
-    ${S.roster.length ? S.roster.map(r => `<div class="rrow"><button class="chk${r.here ? ' on' : ''}" data-act="here" data-id="${r.id}" aria-label="${esc(r.name)} is here">${r.here ? '✓' : ''}</button><span class="rn">${esc(r.name)}</span><span class="rt">${r.tot ? fmtShort(r.tot) + ' played' : ''}</span><button class="x" data-act="del" data-id="${r.id}" aria-label="Remove ${esc(r.name)}">✕</button></div>`).join('')
+    ${rosterRows().length ? rosterRows().map(r => rrowHtml(r)).join('')
       : `<p class="empty">Add your players below. Names can be separated by commas or new lines.</p>`}
     <div class="row"><input type="text" id="addText" placeholder="Add names (Sam, Max, Eli)" value="${esc(ui.addText)}" autocomplete="off"><button class="btn" data-act="add">Add</button></div>
+    ${TEAM() ? `<button class="btn ghost sm" data-act="borrow">Borrow a player from another team</button>` : ''}
     ${S.roster.length ? '' : `<button class="btn ghost sm" data-act="sample">Load a sample team of 10</button>`}
-    <p class="hint">Untick a kid who is not here today. “Played” is their running total across the tournament.</p>
+    <p class="hint">Untick a kid who is not here today. “Played” is their running total across the tournament${TEAM() ? ' for this team' : ''}.${TEAM() ? ' Tap a name to choose which teams they are on.' : ''}</p>
   </section>
 
   <section class="card"><h2>Game</h2>
@@ -875,7 +973,7 @@ function setupView() {
 
   ${voiceCard()}
 
-  ${S.roster.some(r => r.tot) ? `<button class="btn danger sm" data-act="resettot">${ui.confirm === 'resettot' ? 'Tap again to clear totals' : 'Reset tournament totals'}</button>` : ''}`;
+  ${S.roster.some(r => r.tot) ? `<button class="btn danger sm" data-act="resettot">${ui.confirm === 'resettot' ? 'Tap again to clear totals' : 'Reset tournament totals' + (TEAM() ? ' (this team)' : '')}</button>` : ''}`;
 }
 
 function chip(g, id) {            // bench player
@@ -1103,7 +1201,22 @@ function act(a, d) {
   const g = S.game;
   switch (a) {
     case 'here': { const r = R(d.id); r.here = !r.here; break; }
-    case 'del': S.roster = S.roster.filter(r => r.id !== d.id); break;
+    case 'del': {
+      const t = TEAM();
+      if (!t) S.roster = S.roster.filter(r => r.id !== d.id);
+      else if (t.ids.includes(d.id)) removeFromTeam(d.id);
+      else { const r = R(d.id); if (r) r.here = false; S.setup.edited = false; }
+      break;
+    }
+    case 'team': switchTeam(d.id); ui.teamEdit = false; break;
+    case 'teamadd': addTeam(); ui.teamEdit = !!S.team; break;
+    case 'teamedit': ui.teamEdit = !ui.teamEdit; break;
+    case 'teamdel':
+      if (ui.confirm === 'teamdel') { removeTeam(S.team); ui.confirm = null; ui.teamEdit = false; }
+      else { ui.confirm = 'teamdel'; setTimeout(() => { if (ui.confirm === 'teamdel') { ui.confirm = null; render(); } }, 3500); }
+      break;
+    case 'rplayer': playerTeamsSheet(d.id); break;
+    case 'borrow': borrowSheet(); break;
     case 'add': addPlayers(ui.addText); ui.addText = ''; break;
     case 'sample': addPlayers(SAMPLE.join(',')); break;
     case 'cfg': {
@@ -1116,6 +1229,7 @@ function act(a, d) {
     case 'gk': {
       const s = S.setup;
       s.gks = s.gks.includes(d.id) ? s.gks.filter(x => x !== d.id) : [...s.gks, d.id];
+      { const t = TEAM(); if (t) t.gks = [...s.gks]; }
       break;
     }
     case 'setsubs': S.cfg.subsPerHalf = +d.v; break;
@@ -1181,6 +1295,7 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'addText') ui.addText = t.value;
+  else if (t.id === 'teamName') { const tm = TEAM(); if (tm) { const was = tm.name; tm.name = t.value.slice(0, 24) || was; if (S.share.team === was && !shareOn()) S.share.team = tm.name; persist(); } }
   else if (t.id === 'shTeam' || t.id === 'shOpp') { S.share[t.id === 'shTeam' ? 'team' : 'opp'] = t.value.trim().slice(0, 24); persist(); sharePing(); }
   else if (t.id === 'shRelay') { S.share.relay = t.value.trim().replace(/\/+$/, ''); persist(); }
 });
